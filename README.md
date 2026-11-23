@@ -2,7 +2,7 @@
 
 Fast, dependency-free static scanner that finds **hardcoded secrets** and **common vulnerabilities** in your source code.
 
-- Zero dependencies (pure Python 3.8+)
+- Zero dependencies (pure Python 3.10+)
 - Detects secrets, injection, unsafe deserialization, weak crypto, memory-unsafe C calls and risky configs
 - Every finding includes a CWE id and a fix suggestion
 - Secrets are masked in reports

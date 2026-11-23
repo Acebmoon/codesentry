@@ -7,7 +7,7 @@ name = "codesentry"
 version = "0.1.0"
 description = "Fast static scanner for hardcoded secrets and common vulnerabilities in source code."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["security", "secrets", "sast", "static-analysis", "devsecops"]
 classifiers = [
