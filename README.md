@@ -38,14 +38,19 @@ python -m codesentry .
 | `-f, --format` | `text` (default), `json`, `sarif` |
 | `-s, --min-severity` | Report only `LOW`, `MEDIUM` or `HIGH` and above |
 | `--fail-on` | Exit code 1 if a finding at/above this level exists (default `HIGH`) |
-| `-e, --exclude` | Glob to skip, repeatable |
+| `-e, --exclude` | Glob to skip, repeatable. Matched against the path relative to the scanned folder (`tests/*`, `sub/**`, `**/fixtures/*`) and against the file or folder name (`*.min.js`, `tests`) |
+| `--max-file-size` | Skip files larger than this many bytes (default `1000000`, `0` = no limit). Skipped files are listed on stderr and, in SARIF, under `invocations` |
 | `-o, --output` | Write the report to a file |
 
 Exit codes: `0` clean, `1` findings at/above `--fail-on`, `2` usage error.
 
+Secrets are masked in every format: only the secret itself is hidden (`password = "****"`), and typed tokens keep their public prefix (`AKIA****`).
+
 ## Ignoring false positives
 
-Add `# nosec` or `# codesentry:ignore` to the line.
+Add a `nosec` or `codesentry:ignore` comment to the line, in any comment style (`#`, `//`, `/* */`, `<!-- -->`, `--`). The marker must be a whole word inside the comment, so `nosecurity` or a string containing "nosec" do not silence anything.
+
+To silence only some rules, list them: `# codesentry:ignore[CS-SEC-007]` or `// nosec[CS-INJ-001, CS-CFG-002]`.
 
 ## Rules
 
