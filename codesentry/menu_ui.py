@@ -7,6 +7,8 @@ from typing import Callable, List, Optional
 
 from . import __version__
 from .scan_engine import scan, SkippedFile, Finding
+from .rules_db import SEVERITY_ORDER
+from .deps_check import check_deps, find_manifests, DepsError
 from .report_output import as_json
 from .repo_fetch import (is_repo_url, scan_repo, RepoError, parse_repo_url, download_path,
                          downloads_dir, list_downloads, delete_download, delete_all_downloads)
@@ -122,6 +124,10 @@ def _manage_downloads(input_fn, out) -> None:
             out(f"\n{YELLOW}Invalid option.{RESET}")
 
 
+def _ask_deps(input_fn) -> bool:
+    return input_fn("[+] Also check dependencies online (OSV.dev)? [y/N]: ").strip().lower() == "y"
+
+
 def run_menu(input_fn: Callable[[str], str] = input,
              out: Callable[[str], None] = print) -> int:
     last: Optional[List[Finding]] = None
@@ -151,6 +157,12 @@ def run_menu(input_fn: Callable[[str], str] = input,
                 continue
             last_skipped = []
             last = scan([path], skipped=last_skipped)
+            if find_manifests([path]) and _ask_deps(input_fn):
+                try:
+                    last = sorted(last + check_deps(find_manifests([path])),
+                                  key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
+                except DepsError as exc:
+                    out(f"\n{YELLOW}Dependency check failed: {exc}{RESET}")
             _print_findings(last, out)
             for s in last_skipped:
                 out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
@@ -161,15 +173,19 @@ def run_menu(input_fn: Callable[[str], str] = input,
                     out(f"\n{YELLOW}That is not a GitHub repository link.{RESET}")
                     continue
                 keep = input_fn("[+] Keep the downloaded copy to browse? [Y/n]: ").strip().lower() != "n"
+                deps = _ask_deps(input_fn)
             except (EOFError, KeyboardInterrupt):
                 return 0
             out(f"\n{DIM}Downloading and scanning...{RESET}")
             last_skipped = []
+            warnings: List[str] = []
             try:
-                last = scan_repo(link, skipped=last_skipped, keep=keep)
+                last = scan_repo(link, skipped=last_skipped, keep=keep, deps=deps, warnings=warnings)
             except RepoError as exc:
                 out(f"\n{YELLOW}{exc}{RESET}")
                 continue
+            for w in warnings:
+                out(f"\n{YELLOW}Dependency check failed: {w}{RESET}")
             _print_findings(last, out)
             for s in last_skipped:
                 out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")

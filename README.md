@@ -127,3 +127,14 @@ scans it and deletes it. Public repositories only; nothing from the repository i
 Add `--keep` to keep the downloaded copy. In the menu you choose whether to keep it, can show the last results again
 (option 3) and delete downloaded repos one by one or all at once (option 5). Copies are stored in
 `~/.codesentry/downloads`.
+
+## Checking dependencies
+
+`--deps` also checks pinned packages in `requirements*.txt` (`name==1.2.3`) and `package.json` (`^1.2.3` is read as 1.2.3) for known vulnerabilities, using [OSV.dev](https://osv.dev):
+
+```
+codesentry . --deps
+codesentry https://github.com/owner/repo --deps
+```
+
+Only package names and versions are sent, and only when you use `--deps` (the menu asks first). If OSV.dev can't be reached, the code scan still runs and a warning is printed.

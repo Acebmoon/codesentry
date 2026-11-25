@@ -9,6 +9,7 @@ from . import __version__
 from .scan_engine import scan, MAX_FILE_BYTES
 from .report_output import as_text, as_json, as_sarif
 from .rules_db import SEVERITY_ORDER
+from .deps_check import check_deps, find_manifests, DepsError
 from .repo_fetch import is_repo_url, scan_repo, RepoError
 
 
@@ -38,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
                         f"(default: {MAX_FILE_BYTES}; 0 = no limit)")
     p.add_argument("--keep", action="store_true",
                    help="keep the downloaded copy of GitHub repos (see the menu to delete it)")
+    p.add_argument("--deps", action="store_true",
+                   help="also check pinned dependencies (requirements.txt, package.json) "
+                        "for known vulnerabilities via OSV.dev (sends package names and versions)")
     p.add_argument("-o", "--output", metavar="FILE", help="write the report to a file")
     p.add_argument("-v", "--version", action="version", version=f"codesentry {__version__}")
     return p
@@ -62,13 +66,22 @@ def main(argv=None) -> int:
 
     skipped = []
     findings = scan(local, args.exclude, args.min_severity, args.max_file_size, skipped) if local else []
+    warnings = []
+    if args.deps and local:
+        try:
+            findings += check_deps(find_manifests(local, args.exclude), args.min_severity)
+        except DepsError as exc:
+            warnings.append(str(exc))
     for link in links:
         try:
-            findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped, args.keep)
+            findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped,
+                                  args.keep, args.deps, warnings)
         except RepoError as exc:
             print(f"codesentry: {link}: {exc}", file=sys.stderr)
             return 2
     findings.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
+    for w in warnings:
+        print(f"codesentry: dependency check failed: {w}", file=sys.stderr)
     for s in skipped:
         print(f"codesentry: skipped {s.file}: {s.reason}", file=sys.stderr)
 

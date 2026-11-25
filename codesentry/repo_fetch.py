@@ -10,6 +10,8 @@ import tempfile
 from typing import List, Optional, Tuple
 
 from .scan_engine import Finding, SkippedFile, scan, MAX_FILE_BYTES
+from .rules_db import SEVERITY_ORDER
+from .deps_check import check_deps, find_manifests, DepsError
 
 _URL = re.compile(
     r"^(?:https?://)?(?:www\.)?github\.com/(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
@@ -112,10 +114,12 @@ def _drop_links_and_git(root: str) -> None:
 
 def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
               max_file_bytes: Optional[int] = MAX_FILE_BYTES,
-              skipped: Optional[List[SkippedFile]] = None, keep: bool = False) -> List[Finding]:
+              skipped: Optional[List[SkippedFile]] = None, keep: bool = False,
+              deps: bool = False, warnings: Optional[List[str]] = None) -> List[Finding]:
     """Findings for a GitHub repo, with paths shown as owner/repo/path. The clone is
     deleted afterwards, unless keep=True: then it stays in downloads_dir() until
-    delete_download(). The repo's own .codesentryignore is not honored."""
+    delete_download(). deps=True also checks pinned dependencies online
+    (OSV.dev); a failure is added to `warnings`. The repo's own .codesentryignore is not honored."""
     parsed = parse_repo_url(link)
     if not parsed:
         raise RepoError("not a GitHub repository link (expected https://github.com/owner/repo)")
@@ -139,6 +143,13 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
         def shown(p: str) -> str:
             return prefix + "/" + os.path.relpath(p, root).replace(os.sep, "/")
 
+        if deps:
+            try:
+                found += check_deps(find_manifests([root], exclude_globs, use_ignore_file=False), min_severity)
+            except DepsError as exc:
+                if warnings is not None:
+                    warnings.append(str(exc))
+        found.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
         for f in found:
             f.file = shown(f.file)
         if skipped is not None:

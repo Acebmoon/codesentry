@@ -101,7 +101,7 @@ def test_menu_scan_repo_view_results_and_delete(local_repo, tmp_path, monkeypatc
     monkeypatch.setenv("CODESENTRY_HOME", str(tmp_path / "home"))
     lines = []
     # scan repo (keep), view results again, open downloads, delete #1, back, exit
-    run_menu(_feed(["2", "https://github.com/o/r", "", "3", "5", "1", "", "6"]), lines.append)
+    run_menu(_feed(["2", "https://github.com/o/r", "", "", "3", "5", "1", "", "6"]), lines.append)
     text = "\n".join(lines)
     assert text.count("o/r/app.py") == 2          # shown after the scan and again by option 3
     assert "Copy kept in" in text and "Deleted." in text
@@ -110,7 +110,7 @@ def test_menu_scan_repo_view_results_and_delete(local_repo, tmp_path, monkeypatc
 
 def test_menu_scan_repo_without_keeping(local_repo, tmp_path, monkeypatch):
     monkeypatch.setenv("CODESENTRY_HOME", str(tmp_path / "home"))
-    run_menu(_feed(["2", "https://github.com/o/r", "n", "6"]), lambda s: None)
+    run_menu(_feed(["2", "https://github.com/o/r", "n", "", "6"]), lambda s: None)
     assert repo_fetch.list_downloads() == []
 
 
