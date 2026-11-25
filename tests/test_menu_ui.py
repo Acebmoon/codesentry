@@ -25,7 +25,7 @@ def test_scan_and_save(tmp_path):
     src.write_text('password = "hunter2hunter2"\n')
     report = tmp_path / "r.json"
     lines = []
-    run_menu(_feed(["1", f'"{src}"', "4", str(report), "6"]), lines.append)
+    run_menu(_feed(["1", f'"{src}"', "b", "4", str(report), "6"]), lines.append)
     assert any("CS-" in l for l in lines)
     assert report.read_text().startswith("[")
 
@@ -68,3 +68,33 @@ def test_repo_scans_clean():
     from codesentry.scan_engine import scan
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     assert scan([root]) == []
+
+
+def _findings_file(tmp_path, n=12):
+    src = tmp_path / "many.py"
+    src.write_text("".join(f'password{i} = "hunter2hunter{i}"\n' for i in range(n)) + "x = md5_sum\n"
+                   "import hashlib; hashlib.md5(b'x')\n")
+    return src
+
+
+def test_results_screen_pages_filters_saves_and_goes_back(tmp_path, monkeypatch):
+    monkeypatch.setattr("codesentry.menu_ui._per_page", lambda: 2)
+    src = _findings_file(tmp_path)
+    report = tmp_path / "out.json"
+    cleared, lines = [], []
+    run_menu(_feed(["1", str(src), "", "n", "p", "m", "a", "s", str(report), "", "b", "6"]),
+             lines.append, lambda: cleared.append(1))
+    text = "\n".join(lines)
+    assert "RESULTS" in text and "Page 1/" in text and "Page 2/" in text
+    assert "showing MEDIUM" in text and "Saved to" in text
+    assert report.read_text().startswith("[")
+    assert len(cleared) >= 5                       # every screen change starts clean
+
+
+def test_results_screen_back_returns_to_the_menu(tmp_path):
+    src = tmp_path / "a.py"
+    src.write_text("x = 1\n")
+    lines = []
+    run_menu(_feed(["1", str(src), "b", "6"]), lines.append)
+    text = "\n".join(lines)
+    assert "No issues found" in text and text.count("STATIC CODE SCANNER") == 2

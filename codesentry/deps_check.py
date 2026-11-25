@@ -123,6 +123,8 @@ def _fixed_version(vuln: dict, dep: Dep) -> Optional[str]:
         if str(pkg.get("name", "")).lower().replace("_", "-") != dep.name.lower().replace("_", "-"):
             continue
         for rng in aff.get("ranges", []):
+            if rng.get("type") == "GIT":
+                continue                      # commit hashes are not versions
             for ev in rng.get("events", []):
                 if "fixed" in ev:
                     return str(ev["fixed"])
@@ -152,14 +154,20 @@ def check_deps(manifests: Iterable[str], min_severity: str = "LOW") -> List[Find
     threshold = SEVERITY_ORDER[min_severity]
     findings: List[Finding] = []
     for dep, res in zip(deps, results):
-        for v in (res or {}).get("vulns", []):
+        covered = set()                       # the same flaw often has a GHSA and a PYSEC id
+        vulns = sorted((res or {}).get("vulns", []), key=lambda v: (not v["id"].startswith("GHSA"), v["id"]))
+        for v in vulns:
             vuln = details.get(v["id"], {})
+            names = {v["id"], *vuln.get("aliases", [])}
+            if names & covered:
+                continue
+            covered |= names
             sev = _severity(vuln)
             if SEVERITY_ORDER[sev] < threshold:
                 continue
             cwes = (vuln.get("database_specific") or {}).get("cwe_ids") or []
             fixed = _fixed_version(vuln, dep)
-            summary = vuln.get("summary") or "known vulnerability"
+            summary = vuln.get("summary") or (vuln.get("details") or "known vulnerability").strip().splitlines()[0][:100]
             findings.append(Finding(
                 v["id"], f"{dep.name} {dep.version}: {summary}"[:140], sev,
                 cwes[0] if cwes else "CWE-1395", dep.file, dep.line,

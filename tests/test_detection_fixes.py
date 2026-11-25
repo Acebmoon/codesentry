@@ -99,7 +99,7 @@ def test_bind_all_needs_the_whole_address(tmp_path):
     rule = "CS-CFG-002"
     assert _found(tmp_path, "a.py", 'ALLOWED = "10.0.0.0/8"\n', rule) == []
     assert _found(tmp_path, "b.py", 'X = "100.0.0.0"\n', rule) == []
-    for i, line in enumerate(['HOST = "0.0.0.0"\n', 'bind = "0.0.0.0:8080"\n', "# listens on 0.0.0.0.\n"]):
+    for i, line in enumerate(['HOST = "0.0.0.0"\n', 'bind = "0.0.0.0:8080"\n', 'print("listens on 0.0.0.0.")\n']):
         assert len(_found(tmp_path, f"c{i}.py", line, rule)) == 1, line
 
 

@@ -89,8 +89,26 @@ def _feed(answers):
 def test_menu_asks_about_deps_only_when_manifests_exist(project, tmp_path, monkeypatch):
     _fake_osv(monkeypatch, {"flask": ["GHSA-aaaa"]})
     lines = []
-    run_menu(_feed(["1", str(project), "y", "6"]), lines.append)
+    run_menu(_feed(["1", str(project), "", "b", "6"]), lines.append)   # Enter = yes
     assert any("GHSA-aaaa" in l for l in lines)
     empty = tmp_path / "empty"
     empty.mkdir()
-    run_menu(_feed(["1", str(empty), "6"]), lambda s: None)   # no extra prompt, would StopIteration
+    run_menu(_feed(["1", str(empty), "b", "6"]), lambda s: None)
+    monkeypatch.setattr(deps_check, "_post", lambda *a: pytest.fail("said no: nothing may be sent"))
+    run_menu(_feed(["1", str(project), "n", "b", "6"]), lambda s: None)   # no extra prompt, would StopIteration
+
+
+def test_same_flaw_with_two_ids_is_reported_once_and_git_ranges_are_not_versions(project, monkeypatch):
+    _fake_osv(monkeypatch, {"flask": ["PYSEC-1", "GHSA-aaaa", "GHSA-other"]})
+
+    def get(url):
+        vid = url.rsplit("/", 1)[1]
+        aliases = {"PYSEC-1": ["CVE-1"], "GHSA-aaaa": ["CVE-1"], "GHSA-other": ["CVE-2"]}[vid]
+        return {"id": vid, "aliases": aliases, "summary": "s", "database_specific": {"severity": "HIGH"},
+                "affected": [{"package": {"ecosystem": "PyPI", "name": "flask"}, "ranges": [
+                    {"type": "GIT", "events": [{"fixed": "deadbeef"}]},
+                    {"type": "ECOSYSTEM", "events": [{"fixed": "2.2.5"}]}]}]}
+    monkeypatch.setattr(deps_check, "_get", get)
+    findings = deps_check.check_deps(deps_check.find_manifests([str(project)]))
+    assert sorted(f.rule_id for f in findings) == ["GHSA-aaaa", "GHSA-other"]
+    assert all("2.2.5" in f.fix and "deadbeef" not in f.fix for f in findings)

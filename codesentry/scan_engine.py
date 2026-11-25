@@ -158,7 +158,7 @@ def _secret_snippet(rule, match) -> str:
 
 
 # Rules that still look inside commented lines (a secret in a comment is still leaked).
-_KEEP_IN_COMMENTS = ("CS-SEC", "CS-CFG")
+_KEEP_IN_COMMENTS = ("CS-SEC",)
 _COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--", "--")
 
 

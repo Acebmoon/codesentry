@@ -10,6 +10,7 @@ from .scan_engine import scan, MAX_FILE_BYTES
 from .report_output import as_text, as_json, as_sarif
 from .rules_db import SEVERITY_ORDER
 from .deps_check import check_deps, find_manifests, DepsError
+from .history_scan import scan_history, is_git_repo, HistoryError
 from .repo_fetch import is_repo_url, scan_repo, RepoError
 
 
@@ -42,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--deps", action="store_true",
                    help="also check pinned dependencies (requirements.txt, package.json) "
                         "for known vulnerabilities via OSV.dev (sends package names and versions)")
+    p.add_argument("--history", action="store_true",
+                   help="also look for secrets in the git history of local repositories (committed once, later removed)")
     p.add_argument("-o", "--output", metavar="FILE", help="write the report to a file")
     p.add_argument("-v", "--version", action="version", version=f"codesentry {__version__}")
     return p
@@ -71,7 +74,16 @@ def main(argv=None) -> int:
         try:
             findings += check_deps(find_manifests(local, args.exclude), args.min_severity)
         except DepsError as exc:
-            warnings.append(str(exc))
+            warnings.append(f"dependency check failed: {exc}")
+    if args.history:
+        for p in local:
+            if not is_git_repo(p):
+                warnings.append(f"{p} is not the root of a git repository, history skipped")
+                continue
+            try:
+                findings += scan_history(p, findings, args.min_severity, args.exclude)
+            except HistoryError as exc:
+                warnings.append(f"{p}: {exc}")
     for link in links:
         try:
             findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped,
@@ -81,7 +93,7 @@ def main(argv=None) -> int:
             return 2
     findings.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
     for w in warnings:
-        print(f"codesentry: dependency check failed: {w}", file=sys.stderr)
+        print(f"codesentry: {w}", file=sys.stderr)
     for s in skipped:
         print(f"codesentry: skipped {s.file}: {s.reason}", file=sys.stderr)
 

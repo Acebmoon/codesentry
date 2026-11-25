@@ -188,7 +188,8 @@ RULES = [
        "Use SHA-256+ (or bcrypt/argon2 for passwords).", exts=PY | JAVA),
     _r("CS-CRY-002", "TLS verification disabled", "HIGH", "CWE-295",
        r"verify\s*=\s*False|rejectUnauthorized\s*:\s*false|InsecureSkipVerify\s*:\s*true",
-       "Keep certificate verification enabled.", exts=CODE_EXTS),
+       "Keep certificate verification enabled.", exts=CODE_EXTS,
+       check=lambda m: "jwt" not in m.string.lower()),   # jwt.decode(verify=False) is CS-JWT-001
     _r("CS-CRY-003", "Non-crypto RNG for secrets", "LOW", "CWE-338",
        r"(?i)(?:token|password|secret|key)\w{0,40}\s*=.*\brandom\.",  # bounded: linear on long lines
        "Use the secrets module / a CSPRNG.", exts=PY),

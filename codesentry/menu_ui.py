@@ -2,12 +2,14 @@
 # Interactive terminal menu (banner + numbered options). Opens when codesentry runs with no arguments.
 
 import os
+import shutil
 import sys
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Sequence
 
 from . import __version__
 from .scan_engine import scan, SkippedFile, Finding
 from .rules_db import SEVERITY_ORDER
+from .history_scan import scan_history, is_git_repo, HistoryError
 from .deps_check import check_deps, find_manifests, DepsError
 from .report_output import as_json
 from .repo_fetch import (is_repo_url, scan_repo, RepoError, parse_repo_url, download_path,
@@ -78,19 +80,74 @@ def _clean_path(raw: str) -> str:
     return raw.strip().strip('"').strip("'")
 
 
-def _print_findings(findings: List[Finding], out: Callable[[str], None]) -> None:
-    if not findings:
-        out(f"\n{GREEN}No issues found.{RESET}")
-        return
-    for f in findings:
-        color = SEV_COLOR.get(f.severity, "")
-        out(f"\n{color}[{f.severity}]{RESET} {f.rule_id}  {f.file}:{f.line}")
-        out(f"    {f.name} ({f.cwe})")
-        out(f"    {DIM}> {f.snippet}{RESET}")
-        out(f"    fix: {f.fix}")
-    counts = {s: sum(1 for f in findings if f.severity == s) for s in SEV_COLOR}
-    out(f"\nTotal: {len(findings)} | {RED}HIGH: {counts['HIGH']}{RESET} | "
-        f"{YELLOW}MEDIUM: {counts['MEDIUM']}{RESET} | {CYAN}LOW: {counts['LOW']}{RESET}")
+def _clear_screen() -> None:
+    sys.stdout.write("\033[2J\033[3J\033[H")
+    sys.stdout.flush()
+
+
+def _per_page() -> int:
+    rows = shutil.get_terminal_size((80, 24)).lines
+    return max(1, (rows - 11) // 5)        # each finding takes 5 lines, the frame about 11
+
+
+_FILTERS = {"h": "HIGH", "m": "MEDIUM", "l": "LOW"}
+
+
+def results_screen(findings: List[Finding], skipped: List[SkippedFile], input_fn, out,
+                   clear: Callable[[], None] = lambda: None, notes: Sequence[str] = ()) -> None:
+    """Results in their own screen: pages, a severity filter, save and Back."""
+    only: Optional[str] = None
+    page = 0
+    size = _per_page()
+    while True:
+        shown = [f for f in findings if only is None or f.severity == only]
+        pages = max(1, -(-len(shown) // size))
+        page = min(page, pages - 1)
+        clear()
+        out(f"{RED}CODESENTRY{RESET} {DIM}>{RESET} RESULTS")
+        out(f"{DIM}{'-' * 60}{RESET}")
+        counts = {sev: sum(1 for f in findings if f.severity == sev) for sev in SEV_COLOR}
+        out(f"Total: {len(findings)} | {RED}HIGH: {counts['HIGH']}{RESET} | "
+            f"{YELLOW}MEDIUM: {counts['MEDIUM']}{RESET} | {CYAN}LOW: {counts['LOW']}{RESET}"
+            + (f"   {DIM}(showing {only}){RESET}" if only else ""))
+        if not findings:
+            out(f"\n{GREEN}No issues found.{RESET}")
+        elif not shown:
+            out(f"\n{YELLOW}No {only} findings.{RESET}")
+        for i, f in enumerate(shown[page * size:(page + 1) * size], page * size + 1):
+            color = SEV_COLOR.get(f.severity, "")
+            out(f"\n{DIM}{i:>3}{RESET} {color}[{f.severity}]{RESET} {f.rule_id}  {f.file}:{f.line}")
+            out(f"    {f.name} ({f.cwe})")
+            out(f"    {DIM}> {f.snippet}{RESET}")
+            out(f"    fix: {f.fix}")
+        if page == pages - 1:
+            for sk in skipped:
+                out(f"{DIM}skipped {sk.file}: {sk.reason}{RESET}")
+            for note in notes:
+                out(f"{DIM}{note}{RESET}")
+        out(f"\n{DIM}{'-' * 60}{RESET}")
+        out(f"Page {page + 1}/{pages}   [N]ext  [P]rev  [H]igh  [M]edium  [L]ow  [A]ll  [S]ave JSON  [B]ack")
+        try:
+            cmd = input_fn("[+] Command: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if cmd in ("b", "back", "q"):
+            return
+        if cmd in ("", "n", "next"):
+            page = min(page + 1, pages - 1)
+        elif cmd in ("p", "prev"):
+            page = max(page - 1, 0)
+        elif cmd in _FILTERS:
+            only, page = _FILTERS[cmd], 0
+        elif cmd in ("a", "all"):
+            only, page = None, 0
+        elif cmd in ("s", "save"):
+            target = _clean_path(input_fn("[+] Save as (default: codesentry-report.json): ")) \
+                or "codesentry-report.json"
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(as_json(findings) + "\n")
+            out(f"\n{GREEN}Saved to {os.path.abspath(target)}{RESET}")
+            input_fn("[Enter to continue] ")
 
 
 def _size(n: int) -> str:
@@ -125,13 +182,15 @@ def _manage_downloads(input_fn, out) -> None:
 
 
 def _ask_deps(input_fn) -> bool:
-    return input_fn("[+] Also check dependencies online (OSV.dev)? [y/N]: ").strip().lower() == "y"
+    return input_fn("[+] Also check dependencies online (OSV.dev)? [Y/n]: ").strip().lower() != "n"
 
 
 def run_menu(input_fn: Callable[[str], str] = input,
-             out: Callable[[str], None] = print) -> int:
+             out: Callable[[str], None] = print,
+             clear: Callable[[], None] = lambda: None) -> int:
     last: Optional[List[Finding]] = None
     last_skipped: List[SkippedFile] = []
+    clear()
     while True:
         out("")
         out(banner())
@@ -163,9 +222,15 @@ def run_menu(input_fn: Callable[[str], str] = input,
                                   key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
                 except DepsError as exc:
                     out(f"\n{YELLOW}Dependency check failed: {exc}{RESET}")
-            _print_findings(last, out)
-            for s in last_skipped:
-                out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
+            if is_git_repo(path) and input_fn(
+                    "[+] Also scan the git history for leaked secrets? [Y/n]: ").strip().lower() != "n":
+                try:
+                    last = sorted(last + scan_history(path, last),
+                                  key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
+                except HistoryError as exc:
+                    out(f"\n{YELLOW}History scan failed: {exc}{RESET}")
+            results_screen(last, last_skipped, input_fn, out, clear)
+            clear()
         elif choice == "2":
             try:
                 link = _clean_path(input_fn("[+] GitHub link (https://github.com/owner/repo): "))
@@ -185,20 +250,17 @@ def run_menu(input_fn: Callable[[str], str] = input,
                 out(f"\n{YELLOW}{exc}{RESET}")
                 continue
             for w in warnings:
-                out(f"\n{YELLOW}Dependency check failed: {w}{RESET}")
-            _print_findings(last, out)
-            for s in last_skipped:
-                out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
-            if keep:
-                out(f"\n{DIM}Copy kept in {download_path(*parse_repo_url(link))}")
-                out(f"Delete it in option [5].{RESET}")
+                out(f"\n{YELLOW}{w[0].upper() + w[1:]}{RESET}")
+            notes = [f"Copy kept in {download_path(*parse_repo_url(link))}", "Delete it in option [5]."] \
+                if keep else []
+            results_screen(last, last_skipped, input_fn, out, clear, notes)
+            clear()
         elif choice == "3":
             if last is None:
                 out(f"\n{YELLOW}Run a scan first.{RESET}")
                 continue
-            _print_findings(last, out)
-            for s in last_skipped:
-                out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
+            results_screen(last, last_skipped, input_fn, out, clear)
+            clear()
         elif choice == "4":
             if last is None:
                 out(f"\n{YELLOW}Run a scan first.{RESET}")
@@ -218,4 +280,4 @@ def run_menu(input_fn: Callable[[str], str] = input,
 
 def start() -> int:
     _setup_console()
-    return run_menu()
+    return run_menu(clear=_clear_screen)

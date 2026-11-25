@@ -137,4 +137,12 @@ codesentry . --deps
 codesentry https://github.com/owner/repo --deps
 ```
 
-Only package names and versions are sent, and only when you use `--deps` (the menu asks first). If OSV.dev can't be reached, the code scan still runs and a warning is printed.
+Only package names and versions are sent, and only when you use `--deps` (the menu asks first, default yes). If OSV.dev can't be reached, the code scan still runs and a warning is printed.
+
+## Git history
+
+`--history` looks for secrets in the git history of a local repository: ones that were committed once and removed later are still in old commits. Each one is reported at the commit that added it, and needs to be revoked or rotated (deleting the line isn't enough). Secrets still present in the current files are left to the normal scan. `--exclude` and `.codesentryignore` apply. The menu asks when the folder is a git repository.
+
+## Results screen
+
+In the menu, a scan opens its own results screen: `N`/`P` change page (Enter = next), `H`/`M`/`L` filter by severity, `A` shows all, `S` saves JSON and `B` goes back to the menu. Option 3 reopens the last results.

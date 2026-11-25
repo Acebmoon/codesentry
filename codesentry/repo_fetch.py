@@ -148,7 +148,7 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
                 found += check_deps(find_manifests([root], exclude_globs, use_ignore_file=False), min_severity)
             except DepsError as exc:
                 if warnings is not None:
-                    warnings.append(str(exc))
+                    warnings.append(f"dependency check failed: {exc}")
         found.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
         for f in found:
             f.file = shown(f.file)
