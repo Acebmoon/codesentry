@@ -25,7 +25,7 @@ def test_scan_and_save(tmp_path):
     src.write_text('password = "hunter2hunter2"\n')
     report = tmp_path / "r.json"
     lines = []
-    run_menu(_feed(["1", f'"{src}"', "b", "4", str(report), "", "6"]), lines.append)
+    run_menu(_feed(["1", f'"{src}"', "b", "4", "2", str(report), "", "6"]), lines.append)
     assert any("CS-" in l for l in lines)
     assert report.read_text().startswith("[")
 
@@ -106,7 +106,7 @@ def test_b_goes_back_from_every_input_screen(tmp_path):
     lines = []
     # scan folder prompt, github link prompt, a later question, and the save prompt: B each time
     run_menu(_feed(["1", "b", "2", "B", "2", "https://github.com/o/r", "back", "6"]), lines.append)
-    run_menu(_feed(["1", str(src), "b", "4", "b", "", "6"]), lines.append)       # menu option 4, then B
+    run_menu(_feed(["1", str(src), "b", "4", "b", "6"]), lines.append)       # menu option 4, then B
     text = "\n".join(lines)
     assert text.count("[B] Back") >= 3 and "Invalid option" not in text
     # saving from the results screen can be cancelled too

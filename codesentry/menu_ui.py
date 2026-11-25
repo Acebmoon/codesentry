@@ -4,6 +4,8 @@
 import os
 import shutil
 import sys
+import webbrowser
+from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import __version__
@@ -11,7 +13,8 @@ from .scan_engine import scan, SkippedFile, Finding
 from .rules_db import SEVERITY_ORDER
 from .history_scan import scan_history, is_git_repo, HistoryError
 from .deps_check import check_deps, find_manifests, DepsError
-from .report_output import as_json
+from .report_output import as_json, as_text, as_html
+from .clipboard import copy_text, ClipboardError
 from .repo_fetch import (is_repo_url, scan_repo, RepoError, parse_repo_url, download_path,
                          downloads_dir, list_downloads, delete_download, delete_all_downloads)
 
@@ -87,7 +90,7 @@ def _clear_screen() -> None:
 
 def _per_page() -> int:
     rows = shutil.get_terminal_size((80, 24)).lines
-    return max(1, (rows - 12) // 5)        # each finding takes 5 lines, the frame about 12
+    return max(1, (rows - 14) // 5)        # each finding takes 5 lines, the frame about 14
 
 
 class _Quit(Exception):
@@ -210,10 +213,12 @@ def results_screen(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile],
             for note in notes:
                 ui.out(f"\n{YELLOW}{note}{RESET}")
         ui.out(f"\n{DIM}{'-' * 60}{RESET}")
-        line, segs = _buttons(f"Page {page + 1}/{pages}   ", [
-            ("[N]ext", "n"), ("[P]rev", "p"), ("[H]igh", "h"), ("[M]edium", "m"), ("[L]ow", "l"),
-            ("[A]ll", "a"), ("[S]ave JSON", "s"), ("[B]ack", "b")])
-        ui.out(line, hot=segs)
+        for prefix, items in ((f"Page {page + 1}/{pages}   ", [
+                ("[N]ext", "n"), ("[P]rev", "p"), ("[H]igh", "h"), ("[M]edium", "m"), ("[L]ow", "l"),
+                ("[A]ll", "a")]),
+                ("", [("[C]opy", "c"), ("[R]eport HTML", "r"), ("[S]ave JSON", "s"), ("[B]ack", "b")])):
+            line, segs = _buttons(prefix, items)
+            ui.out(line, hot=segs)
         cmd = ui.choose("[+] Command: ", wheel=True).lower()
         if cmd in ("b", "back", "q"):
             return
@@ -227,6 +232,10 @@ def results_screen(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile],
             only, page = None, 0
         elif cmd in ("s", "save"):
             notice = _save_report(ui, findings)
+        elif cmd in ("c", "copy"):
+            notice = _copy_report(shown)
+        elif cmd in ("r", "report", "html"):
+            notice = _html_report(ui, findings, skipped)
         else:
             notice = f"{YELLOW}Unknown command.{RESET}"
 
@@ -243,6 +252,54 @@ def _save_report(ui: _Ui, findings: List[Finding]) -> str:
     except OSError as exc:
         return f"{YELLOW}Could not save: {exc.strerror or exc}{RESET}"
     return f"{GREEN}Saved to {os.path.abspath(target)}{RESET}"
+
+
+def _copy_report(findings: List[Finding]) -> str:
+    if not findings:
+        return f"{YELLOW}Nothing to copy.{RESET}"
+    try:
+        copy_text(as_text(findings))
+    except ClipboardError as exc:
+        return f"{YELLOW}Could not copy: {exc}{RESET}"
+    return f"{GREEN}Copied {len(findings)} finding(s) to the clipboard.{RESET}"
+
+
+def _html_report(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile]) -> str:
+    try:
+        target = _clean_path(ui.ask("[+] Save as (default: codesentry-report.html, B = cancel): ", back=True)) \
+            or "codesentry-report.html"
+        try:
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(as_html(findings, __version__, skipped))
+        except OSError as exc:
+            return f"{YELLOW}Could not save: {exc.strerror or exc}{RESET}"
+        path = os.path.abspath(target)
+        if ui.ask_yes("[+] Open it in the browser now? [Y/n]: "):
+            try:
+                webbrowser.open(Path(path).as_uri())
+            except Exception:
+                return f"{GREEN}Saved to {path}{RESET}  {YELLOW}(could not open the browser){RESET}"
+        return f"{GREEN}Saved to {path}{RESET}"
+    except _Back:
+        return f"{DIM}Cancelled.{RESET}"
+
+
+def _export(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile]) -> None:
+    ui.screen("EXPORT REPORT", back=True)
+    ui.out("[1] HTML report (opens in the browser)")
+    ui.out("[2] JSON file")
+    ui.out("[3] Copy results to the clipboard\n")
+    pick = ui.ask("[+] Option: ", back=True)
+    if pick == "1":
+        notice = _html_report(ui, findings, skipped)
+    elif pick == "2":
+        notice = _save_report(ui, findings)
+    elif pick == "3":
+        notice = _copy_report(findings)
+    else:
+        notice = f"{YELLOW}Invalid option.{RESET}"
+    ui.screen("EXPORT REPORT", notice)
+    ui.choose("[Enter] Back ", any_click=True)
 
 
 def _size(n: int) -> str:
@@ -340,7 +397,7 @@ def run_menu(input_fn: Callable[[str], str] = input,
             ui.out(banner())
             ui.out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
             for number, label in enumerate(("Start Scan", "Scan GitHub repo", "View last results",
-                                            "Save last report (JSON)", "Downloaded repos", "Exit"), 1):
+                                            "Export last report", "Downloaded repos", "Exit"), 1):
                 ui.out(f"[{number}] {label}", hot=str(number))
             ui.out("")
             choice = ui.choose("[+] Option: ")
@@ -360,12 +417,12 @@ def run_menu(input_fn: Callable[[str], str] = input,
                     results_screen(ui, last, last_skipped)
             elif choice == "4":
                 if last is None:
-                    ui.message("SAVE REPORT", "Run a scan first.")
+                    ui.message("EXPORT REPORT", "Run a scan first.")
                 else:
-                    ui.screen("SAVE REPORT", back=True)
-                    text = _save_report(ui, last)
-                    ui.screen("SAVE REPORT", text)
-                    ui.choose("[Enter] Back ", any_click=True)
+                    try:
+                        _export(ui, last, last_skipped)
+                    except _Back:
+                        continue
             elif choice == "5":
                 _manage_downloads(ui)
             elif choice == "6":

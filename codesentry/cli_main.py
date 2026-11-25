@@ -7,7 +7,7 @@ import argparse
 
 from . import __version__
 from .scan_engine import scan, MAX_FILE_BYTES
-from .report_output import as_text, as_json, as_sarif
+from .report_output import as_text, as_json, as_sarif, as_html
 from .rules_db import SEVERITY_ORDER
 from .deps_check import check_deps, find_manifests, DepsError
 from .history_scan import scan_history, is_git_repo, HistoryError
@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="codesentry",
         description="Find hardcoded secrets and common vulnerabilities in source code.")
     p.add_argument("paths", nargs="*", help="files, folders or GitHub repo links to scan (no paths: open the menu)")
-    p.add_argument("-f", "--format", choices=["text", "json", "sarif"], default="text",
+    p.add_argument("-f", "--format", choices=["text", "json", "sarif", "html"], default="text",
                    help="output format (default: text)")
     p.add_argument("-s", "--min-severity", choices=list(SEVERITY_ORDER), default="LOW",
                    type=str.upper, help="only report findings at or above this level")
@@ -99,6 +99,8 @@ def main(argv=None) -> int:
 
     if args.format == "json":
         report = as_json(findings)
+    elif args.format == "html":
+        report = as_html(findings, __version__, skipped)
     elif args.format == "sarif":
         report = as_sarif(findings, __version__, skipped)
     else:

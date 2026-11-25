@@ -69,7 +69,7 @@ def test_results_screen_buttons_and_wheel(tmp_path):
     results = [c for c in mouse.calls if c[0] == "[+] Command: "]
     assert results and results[0][2] is True                          # wheel allowed here
     footer = [seg for segs in results[0][1].values() for seg in segs]
-    assert {c for _, _, c in footer} == {"n", "p", "h", "m", "l", "a", "s", "b"}
+    assert {c for _, _, c in footer} == {"n", "p", "h", "m", "l", "a", "c", "r", "s", "b"}
 
 
 @pytest.mark.skipif(os.name == "nt", reason="uses a pseudo-terminal")
@@ -84,18 +84,31 @@ def test_real_terminal_reads_keys_and_clicks():
     master, slave = pty.openpty()
     proc = subprocess.Popen([sys.executable, "-c", code], stdin=slave, stdout=slave, stderr=slave, close_fds=True)
     os.close(slave)
-    time.sleep(1.0)
-    os.write(master, b"Q")                      # a key
-    time.sleep(0.3)
-    os.write(master, b"\x1b[<0;4;3M")           # a click on the hot line
-    time.sleep(0.3)
-    os.write(master, b"\r")                     # Enter
     out = b""
-    deadline = time.time() + 10
-    while time.time() < deadline and b"GOT" not in out:
+
+    def wait_for(marker, start):
+        nonlocal out
+        deadline = time.time() + 20
+        while time.time() < deadline and out.count(marker) <= start:
+            try:
+                out += os.read(master, 4096)
+            except OSError:
+                break
+
+    wait_for(b"\x1b[?1000h", 0)               # the first prompt is up and the mouse is on
+    os.write(master, b"Q")                      # a key
+    wait_for(b"\x1b[?1000h", 1)
+    os.write(master, b"\x1b[<0;4;3M")           # a click on the hot line
+    wait_for(b"\x1b[?1000h", 2)
+    os.write(master, b"\r")                     # Enter
+    proc.wait(timeout=20)
+    import select
+    while select.select([master], [], [], 0.5)[0]:           # whatever is left after the child exits
         try:
-            out += os.read(master, 4096)
+            chunk = os.read(master, 4096)
         except OSError:
             break
-    proc.wait(timeout=10)
+        if not chunk:
+            break
+        out += chunk
     assert b"GOT 'q' 'x' ''" in out

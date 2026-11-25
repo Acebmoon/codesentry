@@ -147,6 +147,10 @@ Only package names and versions are sent, and only when you use `--deps` (the me
 
 Every menu action opens its own screen with a `CODESENTRY > TITLE` header and a way back, so messages never mix with the menu. In a terminal that supports it (Windows Terminal, PowerShell, most Linux/macOS terminals) you can click menu lines and buttons and use the mouse wheel to change page; keys work without pressing Enter (`1`-`6` in the menu, `N`/`P`/`H`/`M`/`L`/`A`/`S`/`B` in the results, `Esc` goes back). If the mouse isn't available the menu falls back to typing a choice and pressing Enter.
 
+## HTML report and copying results
+
+`codesentry . -f html -o report.html` writes a single self-contained page (dark theme, severity filter buttons, nothing loaded from the network; everything from the scanned code is escaped). In the menu, the results screen has `[R]eport HTML` (saves it and offers to open it in the browser) and `[C]opy` (copies the findings that are on screen, so a severity filter limits what is copied). Menu option 4, `Export last report`, offers HTML, JSON or the clipboard.
+
 ## Results screen
 
 In the menu, a scan opens its own results screen: `N`/`P` change page (Enter = next), `H`/`M`/`L` filter by severity, `A` shows all, `S` saves JSON and `B` goes back to the menu. Option 3 reopens the last results.
