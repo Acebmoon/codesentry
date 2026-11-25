@@ -123,3 +123,7 @@ codesentry https://github.com/owner/repo
 Or pick "Scan GitHub repo" in the menu. CodeSentry makes a shallow clone into a temporary folder (needs `git`),
 scans it and deletes it. Public repositories only; nothing from the repository is ever executed, and its
 `.codesentryignore` is not applied. Use it to review code you are allowed to check and to report problems to the owner.
+
+Add `--keep` to keep the downloaded copy. In the menu you choose whether to keep it, can show the last results again
+(option 3) and delete downloaded repos one by one or all at once (option 5). Copies are stored in
+`~/.codesentry/downloads`.

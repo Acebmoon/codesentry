@@ -157,11 +157,23 @@ def _secret_snippet(rule, match) -> str:
     return (text[:a] + mask(match.group("secret"), rule.reveal) + text[b:])[:120]
 
 
+# Rules that still look inside commented lines (a secret in a comment is still leaked).
+_KEEP_IN_COMMENTS = ("CS-SEC", "CS-CFG")
+_COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--", "--")
+
+
+def _is_comment_line(line: str) -> bool:
+    return line.lstrip().startswith(_COMMENT_START)
+
+
 def _scan_lines(lines: Iterable[str], ext: str, path: str) -> List[Finding]:
     findings: List[Finding] = []
     for num, line in enumerate(lines, 1):
         silenced = _silenced(line)
+        commented = _is_comment_line(line)
         for rule in RULES:
+            if commented and not rule.id.startswith(_KEEP_IN_COMMENTS):
+                continue
             if rule.exts is not None and ext not in rule.exts:
                 continue
             if silenced is not None and (not silenced or rule.id in silenced):

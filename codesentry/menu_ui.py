@@ -8,7 +8,8 @@ from typing import Callable, List, Optional
 from . import __version__
 from .scan_engine import scan, SkippedFile, Finding
 from .report_output import as_json
-from .repo_fetch import is_repo_url, scan_repo, RepoError
+from .repo_fetch import (is_repo_url, scan_repo, RepoError, parse_repo_url, download_path,
+                         downloads_dir, list_downloads, delete_download, delete_all_downloads)
 
 RED, YELLOW, CYAN, GREEN, DIM, RESET = "\033[91m", "\033[93m", "\033[96m", "\033[92m", "\033[2m", "\033[0m"
 SEV_COLOR = {"HIGH": RED, "MEDIUM": YELLOW, "LOW": CYAN}
@@ -90,17 +91,51 @@ def _print_findings(findings: List[Finding], out: Callable[[str], None]) -> None
         f"{YELLOW}MEDIUM: {counts['MEDIUM']}{RESET} | {CYAN}LOW: {counts['LOW']}{RESET}")
 
 
+def _size(n: int) -> str:
+    return f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / 1024 / 1024:.1f} MB"
+
+
+def _manage_downloads(input_fn, out) -> None:
+    while True:
+        items = list_downloads()
+        out("")
+        if not items:
+            out("No downloaded repos.")
+            return
+        out(f"Downloaded repos in {downloads_dir()}:")
+        for i, (name, size) in enumerate(items, 1):
+            out(f"  [{i}] {name.replace('__', '/', 1)}  ({_size(size)})")
+        out("  [a] Delete all")
+        out("  [Enter] Back\n")
+        try:
+            pick = input_fn("[+] Delete which? ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if not pick:
+            return
+        if pick == "a":
+            out(f"\n{GREEN}Deleted {delete_all_downloads()} download(s).{RESET}")
+        elif pick.isdigit() and 1 <= int(pick) <= len(items):
+            delete_download(items[int(pick) - 1][0])
+            out(f"\n{GREEN}Deleted.{RESET}")
+        else:
+            out(f"\n{YELLOW}Invalid option.{RESET}")
+
+
 def run_menu(input_fn: Callable[[str], str] = input,
              out: Callable[[str], None] = print) -> int:
     last: Optional[List[Finding]] = None
+    last_skipped: List[SkippedFile] = []
     while True:
         out("")
         out(banner())
         out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
         out("[1] Start Scan")
         out("[2] Scan GitHub repo")
-        out("[3] Save last report (JSON)")
-        out("[4] Exit\n")
+        out("[3] View last results")
+        out("[4] Save last report (JSON)")
+        out("[5] Downloaded repos (delete)")
+        out("[6] Exit\n")
         try:
             choice = input_fn("[+] Option: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -114,30 +149,41 @@ def run_menu(input_fn: Callable[[str], str] = input,
             if not path or not os.path.exists(path):
                 out(f"\n{YELLOW}Path not found.{RESET}")
                 continue
-            skipped: List[SkippedFile] = []
-            last = scan([path], skipped=skipped)
+            last_skipped = []
+            last = scan([path], skipped=last_skipped)
             _print_findings(last, out)
-            for s in skipped:
+            for s in last_skipped:
                 out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
         elif choice == "2":
             try:
                 link = _clean_path(input_fn("[+] GitHub link (https://github.com/owner/repo): "))
+                if not is_repo_url(link):
+                    out(f"\n{YELLOW}That is not a GitHub repository link.{RESET}")
+                    continue
+                keep = input_fn("[+] Keep the downloaded copy to browse? [Y/n]: ").strip().lower() != "n"
             except (EOFError, KeyboardInterrupt):
                 return 0
-            if not is_repo_url(link):
-                out(f"\n{YELLOW}That is not a GitHub repository link.{RESET}")
-                continue
             out(f"\n{DIM}Downloading and scanning...{RESET}")
-            skipped = []
+            last_skipped = []
             try:
-                last = scan_repo(link, skipped=skipped)
+                last = scan_repo(link, skipped=last_skipped, keep=keep)
             except RepoError as exc:
                 out(f"\n{YELLOW}{exc}{RESET}")
                 continue
             _print_findings(last, out)
-            for s in skipped:
+            for s in last_skipped:
                 out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
+            if keep:
+                out(f"\n{DIM}Copy kept in {download_path(*parse_repo_url(link))}")
+                out(f"Delete it in option [5].{RESET}")
         elif choice == "3":
+            if last is None:
+                out(f"\n{YELLOW}Run a scan first.{RESET}")
+                continue
+            _print_findings(last, out)
+            for s in last_skipped:
+                out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
+        elif choice == "4":
             if last is None:
                 out(f"\n{YELLOW}Run a scan first.{RESET}")
                 continue
@@ -146,7 +192,9 @@ def run_menu(input_fn: Callable[[str], str] = input,
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(as_json(last) + "\n")
             out(f"\n{GREEN}Saved to {os.path.abspath(target)}{RESET}")
-        elif choice == "4":
+        elif choice == "5":
+            _manage_downloads(input_fn, out)
+        elif choice == "6":
             return 0
         else:
             out(f"\n{YELLOW}Invalid option.{RESET}")

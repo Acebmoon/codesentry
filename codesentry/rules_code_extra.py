@@ -13,6 +13,11 @@ CODE_CFG = CODE_EXTS | CONFIG_EXTS
 REQ = r"(?:request|req)\.(?:args|query|GET|POST|form|json|body|params|values|cookies)"
 
 CODE_RULES = [
+    _r("CS-INJ-016", "SQL with an interpolated variable", "HIGH", "CWE-89",
+       r"(?i)\b(?:select\b[^\n]{0,60}?\bfrom|insert\s+into|update\s+[\w.`\"\[\]]+\s+set|delete\s+from)\b"  # codesentry:ignore
+       r"[^\n]{0,120}?(?:[='\"(\s,]\$\{?[A-Za-z_]|#\{|\$\{[^}]+\})",
+       "Use parameterized queries / prepared statements.", exts=PHP | JS | RUBY,
+       check=lambda m: "prepare(" not in m.string),
     # ------------------------------------------------------------ injection
     _r("CS-INJ-007", "Template built from user input (SSTI)", "MEDIUM", "CWE-1336",
        r"\brender_template_string\s*\(\s*(?![\"'])|\b(?:jinja2\.)?Template\s*\(\s*" + REQ,

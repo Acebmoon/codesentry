@@ -17,7 +17,7 @@ def test_banner_fits_80_columns():
 
 
 def test_exit_option():
-    assert run_menu(_feed(["4"]), lambda s: None) == 0
+    assert run_menu(_feed(["6"]), lambda s: None) == 0
 
 
 def test_scan_and_save(tmp_path):
@@ -25,21 +25,21 @@ def test_scan_and_save(tmp_path):
     src.write_text('password = "hunter2hunter2"\n')
     report = tmp_path / "r.json"
     lines = []
-    run_menu(_feed(["1", f'"{src}"', "3", str(report), "4"]), lines.append)
+    run_menu(_feed(["1", f'"{src}"', "4", str(report), "6"]), lines.append)
     assert any("CS-" in l for l in lines)
     assert report.read_text().startswith("[")
 
 
 def test_invalid_path_and_option():
     lines = []
-    run_menu(_feed(["9", "1", "/no/such/path", "4"]), lines.append)
+    run_menu(_feed(["9", "1", "/no/such/path", "6"]), lines.append)
     text = "\n".join(lines)
     assert "Invalid option" in text and "Path not found" in text
 
 
 def test_save_without_scan():
     lines = []
-    run_menu(_feed(["3", "4"]), lines.append)
+    run_menu(_feed(["4", "6"]), lines.append)
     assert any("Run a scan first" in l for l in lines)
 
 

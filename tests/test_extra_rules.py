@@ -37,6 +37,7 @@ CASES = [
     ("CS-INJ-008", "a.js", "res.send(ejs.render(req.query.tpl))\n", "res.render('index', {q: req.query.q})\n"),
     ("CS-INJ-009", "a.js", "child_process.exec('ls ' + dir)\n", "child_process.execFile('ls', [dir])\n"),
     ("CS-INJ-010", "a.php", "system('ping ' . $_GET['ip']);\n", "system('uptime');\n"),
+    ("CS-INJ-016", "a.php", '$q = "SELECT * FROM users WHERE id = \'$id\'";\n', '$q = "SELECT * FROM users WHERE id = ?";\n'),
     ("CS-LFI-001", "a.php", "include($_GET['page'] . '.php');\n", "include 'header.php';\n"),
     ("CS-INJ-011", "a.js", "db.users.find({$where: 'this.a == 1'})\n", "db.users.find({a: 1})\n"),
     ("CS-INJ-012", "a.js", "User.findOne(req.body, cb)\n", "User.findOne({name: String(req.body.name)}, cb)\n"),

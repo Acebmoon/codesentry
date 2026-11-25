@@ -17,6 +17,45 @@ _URL = re.compile(
 CLONE_TIMEOUT = 120
 
 
+def downloads_dir() -> str:
+    """Where kept copies live: ~/.codesentry/downloads (CODESENTRY_HOME overrides ~/.codesentry)."""
+    base = os.environ.get("CODESENTRY_HOME") or os.path.join(os.path.expanduser("~"), ".codesentry")
+    return os.path.join(base, "downloads")
+
+
+def download_path(owner: str, repo: str) -> str:
+    return os.path.join(downloads_dir(), f"{owner}__{repo}")
+
+
+def _folder_size(path: str) -> int:
+    return sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(path) for f in fs
+               if os.path.isfile(os.path.join(d, f)))
+
+
+def list_downloads() -> List[Tuple[str, int]]:
+    """(name, size in bytes) of every kept copy, sorted by name."""
+    root = downloads_dir()
+    if not os.path.isdir(root):
+        return []
+    return sorted((n, _folder_size(os.path.join(root, n))) for n in os.listdir(root)
+                  if os.path.isdir(os.path.join(root, n)) and not os.path.islink(os.path.join(root, n)))
+
+
+def delete_download(name: str) -> bool:
+    """Delete one kept copy by its name. Only direct children of the downloads folder qualify."""
+    root = downloads_dir()
+    target = os.path.join(root, name)
+    if (not name or name != os.path.basename(name) or name in (".", "..")
+            or not os.path.isdir(target) or os.path.islink(target)):
+        return False
+    _rmtree(target)
+    return True
+
+
+def delete_all_downloads() -> int:
+    return sum(1 for name, _ in list_downloads() if delete_download(name))
+
+
 class RepoError(Exception):
     """A readable problem: bad link, repo not found, git missing, timeout."""
 
@@ -71,16 +110,24 @@ def _drop_links_and_git(root: str) -> None:
 
 def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
               max_file_bytes: Optional[int] = MAX_FILE_BYTES,
-              skipped: Optional[List[SkippedFile]] = None) -> List[Finding]:
-    """Findings for a GitHub repo, with paths shown as owner/repo/path. The temp
-    clone is always deleted. The repo's own .codesentryignore is not honored."""
+              skipped: Optional[List[SkippedFile]] = None, keep: bool = False) -> List[Finding]:
+    """Findings for a GitHub repo, with paths shown as owner/repo/path. The clone is
+    deleted afterwards, unless keep=True: then it stays in downloads_dir() until
+    delete_download(). The repo's own .codesentryignore is not honored."""
     parsed = parse_repo_url(link)
     if not parsed:
         raise RepoError("not a GitHub repository link (expected https://github.com/owner/repo)")
     owner, repo = parsed
-    tmp = tempfile.mkdtemp(prefix="codesentry-")
-    try:
+    if keep:
+        os.makedirs(downloads_dir(), exist_ok=True)
+        root = download_path(owner, repo)
+        if os.path.isdir(root):
+            _rmtree(root)
+        tmp = None
+    else:
+        tmp = tempfile.mkdtemp(prefix="codesentry-")
         root = os.path.join(tmp, "repo")
+    try:
         _clone(_clone_url(owner, repo), root)
         _drop_links_and_git(root)
         inner: List[SkippedFile] = []
@@ -95,5 +142,10 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
         if skipped is not None:
             skipped.extend(SkippedFile(shown(s.file), s.reason) for s in inner)
         return found
+    except BaseException:
+        if keep and os.path.isdir(root):
+            _rmtree(root)  # never leave a half-downloaded copy behind
+        raise
     finally:
-        _rmtree(tmp)
+        if tmp:
+            _rmtree(tmp)

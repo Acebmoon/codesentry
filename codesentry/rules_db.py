@@ -87,10 +87,16 @@ def _quoted_key_opens_an_entry(m: "re.Match") -> bool:
     return not before or before[-1] in "{,(["
 
 
+# A value that is only a variable or a bind parameter is not a secret: '$pass_new', "${TOKEN}", %s, :pw
+_INTERPOLATED = re.compile(r"\$\{?\w+\}?|\{\{?[\w. ]+\}?\}|%\(\w+\)s|%s|:\w+|\?")
+
+
 def _hardcoded_secret(m: "re.Match") -> bool:
     """CS-SEC-007: keep real values and passphrases; drop placeholders and UI text."""
     value = m.group("secret").strip()
     if not value or is_placeholder(value) or _VERSION.fullmatch(value):
+        return False
+    if _INTERPOLATED.fullmatch(value):
         return False
     if not _quoted_key_opens_an_entry(m):
         return False
@@ -162,8 +168,10 @@ RULES = [
        r"\bRuntime\.getRuntime\(\)\.exec\s*\(",
        "Validate input and avoid building commands from user data.", exts=JAVA),
     _r("CS-INJ-005", "SQL built by concatenation/formatting", "HIGH", "CWE-89",
-       r"(?i)\b(?:select|insert|update|delete)\b[^\n]{0,80}(?:\+\s*\w+|%s|\{\w*\}|\"\s*%|\.format\()",  # codesentry:ignore
-       "Use parameterized queries / prepared statements.", exts=CODE_EXTS),
+       r"(?i)\b(?:select\b[^\n]{0,60}?\bfrom|insert\s+into|update\s+[\w.`\"\[\]]+\s+set|delete\s+from)\b"  # codesentry:ignore
+       r"[^\n]{0,80}?(?:\+\s*[A-Za-z_$]|%s|\{\w*\}|\"\s*%|\.format\()",
+       "Use parameterized queries / prepared statements.", exts=CODE_EXTS,
+       check=lambda m: "prepare(" not in m.string),
     _r("CS-INJ-006", "innerHTML / document.write", "MEDIUM", "CWE-79",
        r"\.innerHTML\s*=|document\.write\s*\(",
        "Use textContent or a sanitizer to prevent XSS.", exts=JS | frozenset({".html"})),

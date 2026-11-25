@@ -36,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-file-size", type=_file_size, default=MAX_FILE_BYTES, metavar="BYTES",
                    help=f"skip files larger than this and list them on stderr "
                         f"(default: {MAX_FILE_BYTES}; 0 = no limit)")
+    p.add_argument("--keep", action="store_true",
+                   help="keep the downloaded copy of GitHub repos (see the menu to delete it)")
     p.add_argument("-o", "--output", metavar="FILE", help="write the report to a file")
     p.add_argument("-v", "--version", action="version", version=f"codesentry {__version__}")
     return p
@@ -62,7 +64,7 @@ def main(argv=None) -> int:
     findings = scan(local, args.exclude, args.min_severity, args.max_file_size, skipped) if local else []
     for link in links:
         try:
-            findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped)
+            findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped, args.keep)
         except RepoError as exc:
             print(f"codesentry: {link}: {exc}", file=sys.stderr)
             return 2
