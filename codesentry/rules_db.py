@@ -10,13 +10,14 @@ SEVERITY_ORDER = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
 CODE_EXTS = frozenset({
     ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".kt", ".c", ".cpp", ".cc",
     ".h", ".hpp", ".cs", ".php", ".rb", ".go", ".rs", ".sh", ".lua", ".gd",
+    ".vue", ".svelte", ".ejs", ".erb", ".twig", ".cshtml", ".jsp", ".aspx",
 })
 PY = frozenset({".py"})
 JS = frozenset({".js", ".ts", ".jsx", ".tsx"})
 C_LIKE = frozenset({".c", ".cpp", ".cc", ".h", ".hpp"})
 JAVA = frozenset({".java", ".kt"})
 CONFIG_EXTS = frozenset({".json", ".yml", ".yaml", ".ini", ".cfg", ".conf",
-                         ".properties", ".toml", ".xml", ".env"})
+                         ".properties", ".toml", ".xml", ".env", ".config", ".tf"})
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,9 @@ class Rule:
 
 def _r(rid, name, sev, cwe, regex, fix, secret=False, exts=None, check=None, reveal=0):
     return Rule(rid, name, sev, cwe, re.compile(regex), fix, secret, exts, check, reveal)
+
+
+make_rule = _r  # public name for the extra rule packs
 
 
 # ------------------------------------------------------------ placeholders
@@ -195,5 +199,13 @@ RULES = [
 
 # Values that are clearly placeholders, not real secrets. How each hint is
 # matched against a value is in is_placeholder().
-PLACEHOLDER_HINTS =("changeme", "your_", "your-", "example", "xxxx", "<", "${",
+PLACEHOLDER_HINTS = ("changeme", "your_", "your-", "example", "xxxx", "<", "${",
                      "{{", "placeholder", "dummy", "test", "todo", "password123")
+
+
+# Extra rule packs. They import make_rule from this module, so they are loaded last.
+from .rules_secrets_extra import SECRET_RULES  # noqa: E402
+from .rules_code_extra import CODE_RULES  # noqa: E402
+from .rules_infra_extra import INFRA_RULES  # noqa: E402
+
+RULES = RULES + SECRET_RULES + CODE_RULES + INFRA_RULES

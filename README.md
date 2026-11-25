@@ -54,17 +54,22 @@ To silence only some rules, list them: `# codesentry:ignore[CS-SEC-007]` or `// 
 
 ## Rules
 
-| ID | Detects | CWE |
+CodeSentry ships 120 rules. Every finding shows its rule ID, CWE and a fix suggestion. List them with `python -c "from codesentry.rules_db import RULES; [print(r.id, r.severity, r.name) for r in RULES]"`.
+
+| Area | Rule IDs | What it catches |
 |---|---|---|
-| CS-SEC-001..008 | AWS/GitHub/Slack/Google keys, private keys, JWT, hardcoded passwords, credentials in URLs | CWE-798 |
-| CS-INJ-001 | `eval` / `exec` | CWE-95 |
-| CS-INJ-002/003/004 | OS command execution, `shell=True`, `Runtime.exec` | CWE-78 |
-| CS-INJ-005 | SQL built by concatenation | CWE-89 |
-| CS-INJ-006 | `innerHTML` / `document.write` | CWE-79 |
-| CS-DES-001/002 | `pickle.load`, unsafe `yaml.load` | CWE-502 |
-| CS-CRY-001/002/003 | MD5/SHA-1, TLS verification off, non-crypto RNG | CWE-327/295/338 |
-| CS-MEM-001 | `gets`, `strcpy`, `sprintf`, `strcat` | CWE-120 |
-| CS-CFG-001/002 | Debug enabled, bind to `0.0.0.0` | CWE-489/668 |
+| Secrets | CS-SEC-001..022 | AWS, GitHub, GitLab, Slack, npm, Stripe, SendGrid, Telegram, Google, Azure, AI-provider keys; private/PGP keys; JWTs; hardcoded passwords; credentials in URLs and Basic headers; ASP.NET machineKey |
+| Injection | CS-INJ-001..015 | `eval`/`exec`, OS commands, SQL/NoSQL/LDAP/XPath built from variables, SSTI, PHP command calls, LLM output executed as code |
+| Files and requests | CS-PTH, CS-LFI, CS-SSR, CS-RED, CS-UPL | path traversal, file inclusion, SSRF, open redirects, unsafe uploads |
+| XSS and DOM | CS-XSS-001..005 | `dangerouslySetInnerHTML`, `v-html`, HTML sinks, `postMessage('*')`, message listeners |
+| Web config | CS-CSR, CS-COR, CS-CFG-003/004, CS-HST, CS-SES, CS-GQL, CS-PRO | disabled CSRF, loose CORS, trust proxy, wildcard hosts, cookie flags, GraphQL introspection, prototype pollution |
+| Auth and crypto | CS-JWT, CS-CRY, CS-TLS | unverified JWTs, ECB/DES/RC4, fast password hashes, weak RNG, disabled TLS checks |
+| Deserialization and XML | CS-DES-001..011, CS-XXE | pickle, PHP `unserialize`, Java/.NET/Ruby/Node gadgets, ViewState MAC off, XXE |
+| CI/CD | CS-CI-001..009 | untrusted GitHub context in `run:`, `pull_request_target`, `write-all`, unpinned actions, remote scripts piped to a shell |
+| Kubernetes and Docker | CS-K8S-001..007 | privileged pods, host namespaces, root, docker.sock, anonymous access |
+| Cloud and Terraform | CS-IAM, CS-TF | wildcard principals/actions, public ACLs, open security groups, IMDSv1, unencrypted storage |
+| Frameworks | CS-CFG-005..010 | Spring Actuator/H2, Laravel/PHP debug, ASP.NET trace and debug |
+| Memory safety and misc | CS-MEM-001, CS-CFG-001/002 | `gets`/`strcpy`, debug mode, bind to `0.0.0.0` |
 
 ## GitHub Actions
 
@@ -88,3 +93,7 @@ CodeSentry is pattern-based: it may produce false positives and cannot replace a
 ## License
 
 MIT
+
+## Acknowledgements
+
+The extra rule packs (`CS-SEC-009` and up) were designed after studying the vulnerability classes documented in [Claude-BugHunter](https://github.com/elementalsouls/Claude-BugHunter) (code MIT, content CC BY 4.0). That project is an offensive bug-bounty toolkit; CodeSentry only borrows the *classes of weakness* and detects them in your own source. All patterns here were written from scratch.
