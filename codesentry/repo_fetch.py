@@ -100,7 +100,9 @@ def _rmtree(path: str) -> None:
 
 def _drop_links_and_git(root: str) -> None:
     """Never follow links out of the clone, and skip git internals."""
-    shutil.rmtree(os.path.join(root, ".git"), ignore_errors=True)
+    git_dir = os.path.join(root, ".git")
+    if os.path.isdir(git_dir):
+        _rmtree(git_dir)  # not ignore_errors: git pack files are read-only on Windows
     for folder, dirs, files in os.walk(root):
         for name in dirs + files:
             p = os.path.join(folder, name)
