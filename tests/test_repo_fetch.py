@@ -116,5 +116,5 @@ def test_menu_scan_repo_without_keeping(local_repo, tmp_path, monkeypatch):
 
 def test_menu_view_results_before_any_scan():
     lines = []
-    run_menu(_feed(["3", "6"]), lines.append)
+    run_menu(_feed(["3", "", "6"]), lines.append)
     assert any("Run a scan first" in l for l in lines)

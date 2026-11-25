@@ -25,21 +25,21 @@ def test_scan_and_save(tmp_path):
     src.write_text('password = "hunter2hunter2"\n')
     report = tmp_path / "r.json"
     lines = []
-    run_menu(_feed(["1", f'"{src}"', "b", "4", str(report), "6"]), lines.append)
+    run_menu(_feed(["1", f'"{src}"', "b", "4", str(report), "", "6"]), lines.append)
     assert any("CS-" in l for l in lines)
     assert report.read_text().startswith("[")
 
 
 def test_invalid_path_and_option():
     lines = []
-    run_menu(_feed(["9", "1", "/no/such/path", "6"]), lines.append)
+    run_menu(_feed(["9", "", "1", "/no/such/path", "", "6"]), lines.append)
     text = "\n".join(lines)
     assert "Invalid option" in text and "Path not found" in text
 
 
 def test_save_without_scan():
     lines = []
-    run_menu(_feed(["4", "6"]), lines.append)
+    run_menu(_feed(["4", "", "6"]), lines.append)
     assert any("Run a scan first" in l for l in lines)
 
 
@@ -82,7 +82,7 @@ def test_results_screen_pages_filters_saves_and_goes_back(tmp_path, monkeypatch)
     src = _findings_file(tmp_path)
     report = tmp_path / "out.json"
     cleared, lines = [], []
-    run_menu(_feed(["1", str(src), "", "n", "p", "m", "a", "s", str(report), "", "b", "6"]),
+    run_menu(_feed(["1", str(src), "n", "p", "m", "a", "s", str(report), "b", "6"]),
              lines.append, lambda: cleared.append(1))
     text = "\n".join(lines)
     assert "RESULTS" in text and "Page 1/" in text and "Page 2/" in text

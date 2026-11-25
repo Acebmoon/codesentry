@@ -87,50 +87,125 @@ def _clear_screen() -> None:
 
 def _per_page() -> int:
     rows = shutil.get_terminal_size((80, 24)).lines
-    return max(1, (rows - 11) // 5)        # each finding takes 5 lines, the frame about 11
+    return max(1, (rows - 12) // 5)        # each finding takes 5 lines, the frame about 12
+
+
+class _Quit(Exception):
+    """Input closed (Ctrl+C / Ctrl+Z): leave the program."""
+
+
+class _Ui:
+    """Every screen of the menu goes through here, so they all look the same:
+    a clean screen, a `CODESENTRY > TITLE` header, the content, a prompt.
+    It also remembers where each clickable line was drawn (for the mouse)."""
+
+    def __init__(self, input_fn, out, clear, mouse=None):
+        self._input, self._print, self._clear, self._mouse = input_fn, out, clear, mouse
+        self._row, self._hot = 1, {}
+
+    def clear(self) -> None:
+        self._clear()
+        self._row, self._hot = 1, {}
+
+    def out(self, text: str = "", hot=None) -> None:
+        """Print a line. `hot` makes it clickable: a command for the whole line, or a list of
+        (first column, last column, command) for buttons side by side."""
+        self._print(text)
+        if hot is not None:
+            segs = [(1, max(1, len(text)), hot)] if isinstance(hot, str) else hot
+            self._hot.setdefault(self._row + len(text) - len(text.lstrip("\n")), []).extend(segs)
+        self._row += text.count("\n") + 1
+
+    def screen(self, title: str, notice: str = "") -> None:
+        self.clear()
+        self.out(f"{RED}CODESENTRY{RESET} {DIM}>{RESET} {title}")
+        self.out(f"{DIM}{'-' * 60}{RESET}")
+        if notice:
+            self.out(f"\n{notice}")
+        self.out("")
+
+    def ask(self, prompt: str) -> str:
+        try:
+            return self._input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            raise _Quit()
+
+    def choose(self, prompt: str, wheel: bool = False, any_click: bool = False) -> str:
+        """One key or one click (no Enter needed) when the terminal allows it, else typed."""
+        if self._mouse is not None:
+            fits = self._row <= shutil.get_terminal_size((80, 24)).lines   # rows only line up if nothing scrolled
+            try:
+                got = self._mouse.choose(prompt, self._hot if fits else {}, wheel, any_click)
+            except KeyboardInterrupt:
+                raise _Quit()
+            if got is not None:
+                return got
+        return self.ask(prompt)
+
+    def ask_yes(self, prompt: str) -> bool:
+        """[Y/n]: Enter means yes."""
+        return self.ask(prompt).lower() != "n"
+
+    def message(self, title: str, text: str, color: str = YELLOW) -> None:
+        self.screen(title)
+        self.out(f"{color}{text}{RESET}")
+        self.out(f"\n{DIM}{'-' * 60}{RESET}")
+        self.choose("[Enter] Back ", any_click=True)
+
+
+def _buttons(prefix: str, items) -> tuple:
+    """A line of buttons plus the column range of each one: ('Page 1/3  [N]ext ...', segments)."""
+    text, segs = prefix, []
+    for label, cmd in items:
+        segs.append((len(text) + 1, len(text) + len(label), cmd))
+        text += label + "  "
+    return text.rstrip(), segs
 
 
 _FILTERS = {"h": "HIGH", "m": "MEDIUM", "l": "LOW"}
 
 
-def results_screen(findings: List[Finding], skipped: List[SkippedFile], input_fn, out,
-                   clear: Callable[[], None] = lambda: None, notes: Sequence[str] = ()) -> None:
+def _sorted(findings: List[Finding]) -> List[Finding]:
+    return sorted(findings, key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
+
+
+def results_screen(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile],
+                   notes: Sequence[str] = ()) -> None:
     """Results in their own screen: pages, a severity filter, save and Back."""
     only: Optional[str] = None
-    page = 0
+    page, notice = 0, ""
     size = _per_page()
     while True:
         shown = [f for f in findings if only is None or f.severity == only]
         pages = max(1, -(-len(shown) // size))
         page = min(page, pages - 1)
-        clear()
-        out(f"{RED}CODESENTRY{RESET} {DIM}>{RESET} RESULTS")
-        out(f"{DIM}{'-' * 60}{RESET}")
+        ui.screen("RESULTS", notice)
+        notice = ""
         counts = {sev: sum(1 for f in findings if f.severity == sev) for sev in SEV_COLOR}
-        out(f"Total: {len(findings)} | {RED}HIGH: {counts['HIGH']}{RESET} | "
-            f"{YELLOW}MEDIUM: {counts['MEDIUM']}{RESET} | {CYAN}LOW: {counts['LOW']}{RESET}"
-            + (f"   {DIM}(showing {only}){RESET}" if only else ""))
+        ui.out(f"Total: {len(findings)} | {RED}HIGH: {counts['HIGH']}{RESET} | "
+               f"{YELLOW}MEDIUM: {counts['MEDIUM']}{RESET} | {CYAN}LOW: {counts['LOW']}{RESET}"
+               + (f"   {DIM}(showing {only}){RESET}" if only else ""))
         if not findings:
-            out(f"\n{GREEN}No issues found.{RESET}")
+            ui.out(f"\n{GREEN}No issues found.{RESET}")
         elif not shown:
-            out(f"\n{YELLOW}No {only} findings.{RESET}")
+            ui.out(f"\n{YELLOW}No {only} findings.{RESET}")
         for i, f in enumerate(shown[page * size:(page + 1) * size], page * size + 1):
             color = SEV_COLOR.get(f.severity, "")
-            out(f"\n{DIM}{i:>3}{RESET} {color}[{f.severity}]{RESET} {f.rule_id}  {f.file}:{f.line}")
-            out(f"    {f.name} ({f.cwe})")
-            out(f"    {DIM}> {f.snippet}{RESET}")
-            out(f"    fix: {f.fix}")
+            ui.out(f"\n{DIM}{i:>3}{RESET} {color}[{f.severity}]{RESET} {f.rule_id}  {f.file}:{f.line}")
+            ui.out(f"    {f.name} ({f.cwe})")
+            ui.out(f"    {DIM}> {f.snippet}{RESET}")
+            ui.out(f"    fix: {f.fix}")
         if page == pages - 1:
             for sk in skipped:
-                out(f"{DIM}skipped {sk.file}: {sk.reason}{RESET}")
+                ui.out(f"\n{DIM}skipped {sk.file}: {sk.reason}{RESET}")
             for note in notes:
-                out(f"{DIM}{note}{RESET}")
-        out(f"\n{DIM}{'-' * 60}{RESET}")
-        out(f"Page {page + 1}/{pages}   [N]ext  [P]rev  [H]igh  [M]edium  [L]ow  [A]ll  [S]ave JSON  [B]ack")
-        try:
-            cmd = input_fn("[+] Command: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            return
+                ui.out(f"\n{YELLOW}{note}{RESET}")
+        ui.out(f"\n{DIM}{'-' * 60}{RESET}")
+        line, segs = _buttons(f"Page {page + 1}/{pages}   ", [
+            ("[N]ext", "n"), ("[P]rev", "p"), ("[H]igh", "h"), ("[M]edium", "m"), ("[L]ow", "l"),
+            ("[A]ll", "a"), ("[S]ave JSON", "s"), ("[B]ack", "b")])
+        ui.out(line, hot=segs)
+        cmd = ui.choose("[+] Command: ", wheel=True).lower()
         if cmd in ("b", "back", "q"):
             return
         if cmd in ("", "n", "next"):
@@ -142,142 +217,150 @@ def results_screen(findings: List[Finding], skipped: List[SkippedFile], input_fn
         elif cmd in ("a", "all"):
             only, page = None, 0
         elif cmd in ("s", "save"):
-            target = _clean_path(input_fn("[+] Save as (default: codesentry-report.json): ")) \
-                or "codesentry-report.json"
-            with open(target, "w", encoding="utf-8") as fh:
-                fh.write(as_json(findings) + "\n")
-            out(f"\n{GREEN}Saved to {os.path.abspath(target)}{RESET}")
-            input_fn("[Enter to continue] ")
+            notice = _save_report(ui, findings)
+        else:
+            notice = f"{YELLOW}Unknown command.{RESET}"
+
+
+def _save_report(ui: _Ui, findings: List[Finding]) -> str:
+    target = _clean_path(ui.ask("[+] Save as (default: codesentry-report.json): ")) or "codesentry-report.json"
+    try:
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(as_json(findings) + "\n")
+    except OSError as exc:
+        return f"{YELLOW}Could not save: {exc.strerror or exc}{RESET}"
+    return f"{GREEN}Saved to {os.path.abspath(target)}{RESET}"
 
 
 def _size(n: int) -> str:
     return f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / 1024 / 1024:.1f} MB"
 
 
-def _manage_downloads(input_fn, out) -> None:
+def _manage_downloads(ui: _Ui) -> None:
+    notice = ""
     while True:
         items = list_downloads()
-        out("")
+        ui.screen("DOWNLOADED REPOS", notice)
+        notice = ""
         if not items:
-            out("No downloaded repos.")
+            ui.out("No downloaded repos.")
+            ui.out(f"\n{DIM}{'-' * 60}{RESET}")
+            ui.choose("[Enter] Back ", any_click=True)
             return
-        out(f"Downloaded repos in {downloads_dir()}:")
+        ui.out(f"Kept in {downloads_dir()}\n")
         for i, (name, size) in enumerate(items, 1):
-            out(f"  [{i}] {name.replace('__', '/', 1)}  ({_size(size)})")
-        out("  [a] Delete all")
-        out("  [Enter] Back\n")
-        try:
-            pick = input_fn("[+] Delete which? ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            return
-        if not pick:
+            ui.out(f"  [{i}] {name.replace('__', '/', 1)}  ({_size(size)})")
+        ui.out("\n  [A] Delete all     [B] Back")
+        ui.out(f"\n{DIM}{'-' * 60}{RESET}")
+        pick = ui.ask("[+] Delete which? (number) ").lower()
+        if pick in ("", "b", "back"):
             return
         if pick == "a":
-            out(f"\n{GREEN}Deleted {delete_all_downloads()} download(s).{RESET}")
+            notice = f"{GREEN}Deleted {delete_all_downloads()} download(s).{RESET}"
         elif pick.isdigit() and 1 <= int(pick) <= len(items):
             delete_download(items[int(pick) - 1][0])
-            out(f"\n{GREEN}Deleted.{RESET}")
+            notice = f"{GREEN}Deleted.{RESET}"
         else:
-            out(f"\n{YELLOW}Invalid option.{RESET}")
+            notice = f"{YELLOW}Invalid option.{RESET}"
 
 
-def _ask_deps(input_fn) -> bool:
-    return input_fn("[+] Also check dependencies online (OSV.dev)? [Y/n]: ").strip().lower() != "n"
+def _scan_local(ui: _Ui):
+    ui.screen("SCAN")
+    ui.out(f"{DIM}Drag a folder or file here, or type its path.{RESET}\n")
+    path = _clean_path(ui.ask("[+] Folder or file to scan: "))
+    if not path or not os.path.exists(path):
+        ui.message("SCAN", "Path not found.")
+        return None
+    notes: List[str] = []
+    skipped: List[SkippedFile] = []
+    manifests = find_manifests([path])
+    check = bool(manifests) and ui.ask_yes("[+] Also check dependencies online (OSV.dev)? [Y/n]: ")
+    history = is_git_repo(path) and ui.ask_yes("[+] Also scan the git history for leaked secrets? [Y/n]: ")
+    ui.out(f"\n{DIM}Scanning...{RESET}")
+    found = scan([path], skipped=skipped)
+    if check:
+        try:
+            found += check_deps(manifests)
+        except DepsError as exc:
+            notes.append(f"Dependency check failed: {exc}")
+    if history:
+        try:
+            found += scan_history(path, found)
+        except HistoryError as exc:
+            notes.append(f"History scan failed: {exc}")
+    return _sorted(found), skipped, notes
+
+
+def _scan_github(ui: _Ui):
+    ui.screen("SCAN GITHUB REPO")
+    link = _clean_path(ui.ask("[+] GitHub link (https://github.com/owner/repo): "))
+    if not is_repo_url(link):
+        ui.message("SCAN GITHUB REPO", "That is not a GitHub repository link.")
+        return None
+    keep = ui.ask_yes("[+] Keep the downloaded copy to browse? [Y/n]: ")
+    deps = ui.ask_yes("[+] Also check dependencies online (OSV.dev)? [Y/n]: ")
+    ui.out(f"\n{DIM}Downloading and scanning...{RESET}")
+    skipped: List[SkippedFile] = []
+    warnings: List[str] = []
+    try:
+        found = scan_repo(link, skipped=skipped, keep=keep, deps=deps, warnings=warnings)
+    except RepoError as exc:
+        ui.message("SCAN GITHUB REPO", str(exc))
+        return None
+    notes = [w[0].upper() + w[1:] for w in warnings]
+    if keep:
+        notes += [f"Copy kept in {download_path(*parse_repo_url(link))}. Delete it in [5] Downloaded repos."]
+    return found, skipped, notes
 
 
 def run_menu(input_fn: Callable[[str], str] = input,
              out: Callable[[str], None] = print,
-             clear: Callable[[], None] = lambda: None) -> int:
+             clear: Callable[[], None] = lambda: None,
+             mouse=None) -> int:
+    ui = _Ui(input_fn, out, clear, mouse)
     last: Optional[List[Finding]] = None
     last_skipped: List[SkippedFile] = []
-    clear()
-    while True:
-        out("")
-        out(banner())
-        out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
-        out("[1] Start Scan")
-        out("[2] Scan GitHub repo")
-        out("[3] View last results")
-        out("[4] Save last report (JSON)")
-        out("[5] Downloaded repos")
-        out("[6] Exit\n")
-        try:
-            choice = input_fn("[+] Option: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return 0
+    try:
+        while True:
+            ui.clear()
+            ui.out("")
+            ui.out(banner())
+            ui.out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
+            for number, label in enumerate(("Start Scan", "Scan GitHub repo", "View last results",
+                                            "Save last report (JSON)", "Downloaded repos", "Exit"), 1):
+                ui.out(f"[{number}] {label}", hot=str(number))
+            ui.out("")
+            choice = ui.choose("[+] Option: ")
 
-        if choice == "1":
-            try:
-                path = _clean_path(input_fn("[+] Folder or file to scan: "))
-            except (EOFError, KeyboardInterrupt):
+            if choice in ("1", "2"):
+                result = _scan_local(ui) if choice == "1" else _scan_github(ui)
+                if result:
+                    last, last_skipped, notes = result
+                    results_screen(ui, last, last_skipped, notes)
+            elif choice == "3":
+                if last is None:
+                    ui.message("RESULTS", "Run a scan first.")
+                else:
+                    results_screen(ui, last, last_skipped)
+            elif choice == "4":
+                if last is None:
+                    ui.message("SAVE REPORT", "Run a scan first.")
+                else:
+                    ui.screen("SAVE REPORT")
+                    text = _save_report(ui, last)
+                    ui.screen("SAVE REPORT", text)
+                    ui.choose("[Enter] Back ", any_click=True)
+            elif choice == "5":
+                _manage_downloads(ui)
+            elif choice == "6":
                 return 0
-            if not path or not os.path.exists(path):
-                out(f"\n{YELLOW}Path not found.{RESET}")
-                continue
-            last_skipped = []
-            last = scan([path], skipped=last_skipped)
-            if find_manifests([path]) and _ask_deps(input_fn):
-                try:
-                    last = sorted(last + check_deps(find_manifests([path])),
-                                  key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
-                except DepsError as exc:
-                    out(f"\n{YELLOW}Dependency check failed: {exc}{RESET}")
-            if is_git_repo(path) and input_fn(
-                    "[+] Also scan the git history for leaked secrets? [Y/n]: ").strip().lower() != "n":
-                try:
-                    last = sorted(last + scan_history(path, last),
-                                  key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
-                except HistoryError as exc:
-                    out(f"\n{YELLOW}History scan failed: {exc}{RESET}")
-            results_screen(last, last_skipped, input_fn, out, clear)
-            clear()
-        elif choice == "2":
-            try:
-                link = _clean_path(input_fn("[+] GitHub link (https://github.com/owner/repo): "))
-                if not is_repo_url(link):
-                    out(f"\n{YELLOW}That is not a GitHub repository link.{RESET}")
-                    continue
-                keep = input_fn("[+] Keep the downloaded copy to browse? [Y/n]: ").strip().lower() != "n"
-                deps = _ask_deps(input_fn)
-            except (EOFError, KeyboardInterrupt):
-                return 0
-            out(f"\n{DIM}Downloading and scanning...{RESET}")
-            last_skipped = []
-            warnings: List[str] = []
-            try:
-                last = scan_repo(link, skipped=last_skipped, keep=keep, deps=deps, warnings=warnings)
-            except RepoError as exc:
-                out(f"\n{YELLOW}{exc}{RESET}")
-                continue
-            for w in warnings:
-                out(f"\n{YELLOW}{w[0].upper() + w[1:]}{RESET}")
-            notes = [f"Copy kept in {download_path(*parse_repo_url(link))}", "Delete it in option [5]."] \
-                if keep else []
-            results_screen(last, last_skipped, input_fn, out, clear, notes)
-            clear()
-        elif choice == "3":
-            if last is None:
-                out(f"\n{YELLOW}Run a scan first.{RESET}")
-                continue
-            results_screen(last, last_skipped, input_fn, out, clear)
-            clear()
-        elif choice == "4":
-            if last is None:
-                out(f"\n{YELLOW}Run a scan first.{RESET}")
-                continue
-            target = _clean_path(input_fn("[+] Save as (default: codesentry-report.json): ")) \
-                or "codesentry-report.json"
-            with open(target, "w", encoding="utf-8") as fh:
-                fh.write(as_json(last) + "\n")
-            out(f"\n{GREEN}Saved to {os.path.abspath(target)}{RESET}")
-        elif choice == "5":
-            _manage_downloads(input_fn, out)
-        elif choice == "6":
-            return 0
-        else:
-            out(f"\n{YELLOW}Invalid option.{RESET}")
+            else:
+                ui.message("MENU", "Invalid option.")
+    except _Quit:
+        return 0
 
 
 def start() -> int:
     _setup_console()
-    return run_menu(clear=_clear_screen)
+    from .term_input import Mouse
+    return run_menu(clear=_clear_screen, mouse=Mouse())
