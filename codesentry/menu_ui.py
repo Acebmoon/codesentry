@@ -134,7 +134,7 @@ def run_menu(input_fn: Callable[[str], str] = input,
         out("[2] Scan GitHub repo")
         out("[3] View last results")
         out("[4] Save last report (JSON)")
-        out("[5] Downloaded repos (delete)")
+        out("[5] Downloaded repos")
         out("[6] Exit\n")
         try:
             choice = input_fn("[+] Option: ").strip()
