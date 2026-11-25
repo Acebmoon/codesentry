@@ -113,3 +113,13 @@ The extra rule packs (`CS-SEC-009` and up) were designed after studying the vuln
 
 Put a `.codesentryignore` in the folder you scan, one glob per line (`#` for comments), e.g. `tests` or `build/**`.
 CodeSentry also reads it automatically. Single lines can be silenced with `# codesentry:ignore[CS-XXX-000]`.
+
+## Scanning a GitHub repository
+
+```
+codesentry https://github.com/owner/repo
+```
+
+Or pick "Scan GitHub repo" in the menu. CodeSentry makes a shallow clone into a temporary folder (needs `git`),
+scans it and deletes it. Public repositories only; nothing from the repository is ever executed, and its
+`.codesentryignore` is not applied. Use it to review code you are allowed to check and to report problems to the owner.

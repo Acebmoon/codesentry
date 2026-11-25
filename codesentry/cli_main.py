@@ -9,6 +9,7 @@ from . import __version__
 from .scan_engine import scan, MAX_FILE_BYTES
 from .report_output import as_text, as_json, as_sarif
 from .rules_db import SEVERITY_ORDER
+from .repo_fetch import is_repo_url, scan_repo, RepoError
 
 
 def _file_size(text: str) -> int:
@@ -22,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="codesentry",
         description="Find hardcoded secrets and common vulnerabilities in source code.")
-    p.add_argument("paths", nargs="*", help="files or folders to scan (no paths: open the menu)")
+    p.add_argument("paths", nargs="*", help="files, folders or GitHub repo links to scan (no paths: open the menu)")
     p.add_argument("-f", "--format", choices=["text", "json", "sarif"], default="text",
                    help="output format (default: text)")
     p.add_argument("-s", "--min-severity", choices=list(SEVERITY_ORDER), default="LOW",
@@ -50,13 +51,22 @@ def main(argv=None) -> int:
             return start()
         parser.error("the following arguments are required: paths")
 
-    missing = [p for p in args.paths if not os.path.exists(p)]
+    links = [p for p in args.paths if not os.path.exists(p) and is_repo_url(p)]
+    local = [p for p in args.paths if p not in links]
+    missing = [p for p in local if not os.path.exists(p)]
     if missing:
         print(f"Path not found: {', '.join(missing)}", file=sys.stderr)
         return 2
 
     skipped = []
-    findings = scan(args.paths, args.exclude, args.min_severity, args.max_file_size, skipped)
+    findings = scan(local, args.exclude, args.min_severity, args.max_file_size, skipped) if local else []
+    for link in links:
+        try:
+            findings += scan_repo(link, args.min_severity, args.exclude, args.max_file_size, skipped)
+        except RepoError as exc:
+            print(f"codesentry: {link}: {exc}", file=sys.stderr)
+            return 2
+    findings.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
     for s in skipped:
         print(f"codesentry: skipped {s.file}: {s.reason}", file=sys.stderr)
 

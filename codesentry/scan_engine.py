@@ -129,8 +129,8 @@ def read_ignore_file(folder: str) -> List[str]:
     return [ln for ln in lines if ln and not ln.startswith("#")]
 
 
-def iter_files(path: str, exclude_globs: Iterable[str] = ()) -> Iterable[str]:
-    if os.path.isdir(path):
+def iter_files(path: str, exclude_globs: Iterable[str] = (), use_ignore_file: bool = True) -> Iterable[str]:
+    if use_ignore_file and os.path.isdir(path):
         exclude_globs = list(exclude_globs) + read_ignore_file(path)
     if os.path.isfile(path):
         if not _excluder(os.path.dirname(path) or ".", exclude_globs)(path):
@@ -200,12 +200,13 @@ def scan_file(path: str, max_file_bytes: Optional[int] = MAX_FILE_BYTES,
 
 def scan(paths: Iterable[str], exclude_globs: Iterable[str] = (),
          min_severity: str = "LOW", max_file_bytes: Optional[int] = MAX_FILE_BYTES,
-         skipped: Optional[List[SkippedFile]] = None) -> List[Finding]:
+         skipped: Optional[List[SkippedFile]] = None,
+         use_ignore_file: bool = True) -> List[Finding]:
     threshold = SEVERITY_ORDER[min_severity]
     exclude_globs = list(exclude_globs)
     results: List[Finding] = []
     for p in paths:
-        for f in iter_files(p, exclude_globs):
+        for f in iter_files(p, exclude_globs, use_ignore_file):
             results += [x for x in scan_file(f, max_file_bytes, skipped)
                         if SEVERITY_ORDER[x.severity] >= threshold]
     results.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))

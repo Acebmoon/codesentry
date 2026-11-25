@@ -8,6 +8,7 @@ from typing import Callable, List, Optional
 from . import __version__
 from .scan_engine import scan, SkippedFile, Finding
 from .report_output import as_json
+from .repo_fetch import is_repo_url, scan_repo, RepoError
 
 RED, YELLOW, CYAN, GREEN, DIM, RESET = "\033[91m", "\033[93m", "\033[96m", "\033[92m", "\033[2m", "\033[0m"
 SEV_COLOR = {"HIGH": RED, "MEDIUM": YELLOW, "LOW": CYAN}
@@ -97,8 +98,9 @@ def run_menu(input_fn: Callable[[str], str] = input,
         out(banner())
         out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
         out("[1] Start Scan")
-        out("[2] Save last report (JSON)")
-        out("[3] Exit\n")
+        out("[2] Scan GitHub repo")
+        out("[3] Save last report (JSON)")
+        out("[4] Exit\n")
         try:
             choice = input_fn("[+] Option: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -118,6 +120,24 @@ def run_menu(input_fn: Callable[[str], str] = input,
             for s in skipped:
                 out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
         elif choice == "2":
+            try:
+                link = _clean_path(input_fn("[+] GitHub link (https://github.com/owner/repo): "))
+            except (EOFError, KeyboardInterrupt):
+                return 0
+            if not is_repo_url(link):
+                out(f"\n{YELLOW}That is not a GitHub repository link.{RESET}")
+                continue
+            out(f"\n{DIM}Downloading and scanning...{RESET}")
+            skipped = []
+            try:
+                last = scan_repo(link, skipped=skipped)
+            except RepoError as exc:
+                out(f"\n{YELLOW}{exc}{RESET}")
+                continue
+            _print_findings(last, out)
+            for s in skipped:
+                out(f"{DIM}skipped {s.file}: {s.reason}{RESET}")
+        elif choice == "3":
             if last is None:
                 out(f"\n{YELLOW}Run a scan first.{RESET}")
                 continue
@@ -126,7 +146,7 @@ def run_menu(input_fn: Callable[[str], str] = input,
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(as_json(last) + "\n")
             out(f"\n{GREEN}Saved to {os.path.abspath(target)}{RESET}")
-        elif choice == "3":
+        elif choice == "4":
             return 0
         else:
             out(f"\n{YELLOW}Invalid option.{RESET}")
