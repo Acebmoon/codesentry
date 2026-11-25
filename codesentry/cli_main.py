@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="codesentry",
         description="Find hardcoded secrets and common vulnerabilities in source code.")
-    p.add_argument("paths", nargs="+", help="files or folders to scan")
+    p.add_argument("paths", nargs="*", help="files or folders to scan (no paths: open the menu)")
     p.add_argument("-f", "--format", choices=["text", "json", "sarif"], default="text",
                    help="output format (default: text)")
     p.add_argument("-s", "--min-severity", choices=list(SEVERITY_ORDER), default="LOW",
@@ -41,7 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if not args.paths:
+        if sys.stdin.isatty():
+            from .menu_ui import start
+            return start()
+        parser.error("the following arguments are required: paths")
 
     missing = [p for p in args.paths if not os.path.exists(p)]
     if missing:

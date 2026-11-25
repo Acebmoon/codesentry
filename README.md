@@ -46,6 +46,17 @@ Exit codes: `0` clean, `1` findings at/above `--fail-on`, `2` usage error.
 
 Secrets are masked in every format: only the secret itself is hidden (`password = "****"`), and typed tokens keep their public prefix (`AKIA****`).
 
+## Windows executable and menu
+
+Run `codesentry` with no arguments to open the interactive menu (banner, numbered options, JSON report export).
+The Windows `.exe` is built by GitHub Actions and attached to each release as `codesentry-windows.exe`:
+double-click it, or run it from a terminal. To build it yourself:
+
+```
+py -m pip install pyinstaller
+py -m PyInstaller --onefile --name codesentry exe_entry.py
+```
+
 ## Ignoring false positives
 
 Add a `nosec` or `codesentry:ignore` comment to the line, in any comment style (`#`, `//`, `/* */`, `<!-- -->`, `--`). The marker must be a whole word inside the comment, so `nosecurity` or a string containing "nosec" do not silence anything.
