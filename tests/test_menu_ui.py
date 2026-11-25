@@ -98,3 +98,18 @@ def test_results_screen_back_returns_to_the_menu(tmp_path):
     run_menu(_feed(["1", str(src), "b", "6"]), lines.append)
     text = "\n".join(lines)
     assert "No issues found" in text and text.count("STATIC CODE SCANNER") == 2
+
+
+def test_b_goes_back_from_every_input_screen(tmp_path):
+    src = tmp_path / "a.py"
+    src.write_text("x = 1\n")
+    lines = []
+    # scan folder prompt, github link prompt, a later question, and the save prompt: B each time
+    run_menu(_feed(["1", "b", "2", "B", "2", "https://github.com/o/r", "back", "6"]), lines.append)
+    run_menu(_feed(["1", str(src), "b", "4", "b", "", "6"]), lines.append)       # menu option 4, then B
+    text = "\n".join(lines)
+    assert text.count("[B] Back") >= 3 and "Invalid option" not in text
+    # saving from the results screen can be cancelled too
+    lines2 = []
+    run_menu(_feed(["1", str(src), "s", "b", "b", "6"]), lines2.append)
+    assert any("Cancelled." in l for l in lines2)

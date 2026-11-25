@@ -94,6 +94,10 @@ class _Quit(Exception):
     """Input closed (Ctrl+C / Ctrl+Z): leave the program."""
 
 
+class _Back(Exception):
+    """The person typed B on a screen that asks for input: back to the menu."""
+
+
 class _Ui:
     """Every screen of the menu goes through here, so they all look the same:
     a clean screen, a `CODESENTRY > TITLE` header, the content, a prompt.
@@ -116,19 +120,24 @@ class _Ui:
             self._hot.setdefault(self._row + len(text) - len(text.lstrip("\n")), []).extend(segs)
         self._row += text.count("\n") + 1
 
-    def screen(self, title: str, notice: str = "") -> None:
+    def screen(self, title: str, notice: str = "", back: bool = False) -> None:
         self.clear()
         self.out(f"{RED}CODESENTRY{RESET} {DIM}>{RESET} {title}")
         self.out(f"{DIM}{'-' * 60}{RESET}")
+        if back:
+            self.out(f"{DIM}[B] Back  (type B and press Enter at any question){RESET}")
         if notice:
             self.out(f"\n{notice}")
         self.out("")
 
-    def ask(self, prompt: str) -> str:
+    def ask(self, prompt: str, back: bool = False) -> str:
         try:
-            return self._input(prompt).strip()
+            value = self._input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             raise _Quit()
+        if back and value.lower() in ("b", "back"):
+            raise _Back()
+        return value
 
     def choose(self, prompt: str, wheel: bool = False, any_click: bool = False) -> str:
         """One key or one click (no Enter needed) when the terminal allows it, else typed."""
@@ -143,8 +152,8 @@ class _Ui:
         return self.ask(prompt)
 
     def ask_yes(self, prompt: str) -> bool:
-        """[Y/n]: Enter means yes."""
-        return self.ask(prompt).lower() != "n"
+        """[Y/n]: Enter means yes. B goes back."""
+        return self.ask(prompt, back=True).lower() != "n"
 
     def message(self, title: str, text: str, color: str = YELLOW) -> None:
         self.screen(title)
@@ -223,7 +232,11 @@ def results_screen(ui: _Ui, findings: List[Finding], skipped: List[SkippedFile],
 
 
 def _save_report(ui: _Ui, findings: List[Finding]) -> str:
-    target = _clean_path(ui.ask("[+] Save as (default: codesentry-report.json): ")) or "codesentry-report.json"
+    try:
+        target = _clean_path(ui.ask("[+] Save as (default: codesentry-report.json, B = cancel): ", back=True)) \
+            or "codesentry-report.json"
+    except _Back:
+        return f"{DIM}Cancelled.{RESET}"
     try:
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(as_json(findings) + "\n")
@@ -265,9 +278,9 @@ def _manage_downloads(ui: _Ui) -> None:
 
 
 def _scan_local(ui: _Ui):
-    ui.screen("SCAN")
+    ui.screen("SCAN", back=True)
     ui.out(f"{DIM}Drag a folder or file here, or type its path.{RESET}\n")
-    path = _clean_path(ui.ask("[+] Folder or file to scan: "))
+    path = _clean_path(ui.ask("[+] Folder or file to scan: ", back=True))
     if not path or not os.path.exists(path):
         ui.message("SCAN", "Path not found.")
         return None
@@ -292,8 +305,8 @@ def _scan_local(ui: _Ui):
 
 
 def _scan_github(ui: _Ui):
-    ui.screen("SCAN GITHUB REPO")
-    link = _clean_path(ui.ask("[+] GitHub link (https://github.com/owner/repo): "))
+    ui.screen("SCAN GITHUB REPO", back=True)
+    link = _clean_path(ui.ask("[+] GitHub link (https://github.com/owner/repo): ", back=True))
     if not is_repo_url(link):
         ui.message("SCAN GITHUB REPO", "That is not a GitHub repository link.")
         return None
@@ -333,7 +346,10 @@ def run_menu(input_fn: Callable[[str], str] = input,
             choice = ui.choose("[+] Option: ")
 
             if choice in ("1", "2"):
-                result = _scan_local(ui) if choice == "1" else _scan_github(ui)
+                try:
+                    result = _scan_local(ui) if choice == "1" else _scan_github(ui)
+                except _Back:
+                    continue
                 if result:
                     last, last_skipped, notes = result
                     results_screen(ui, last, last_skipped, notes)
@@ -346,7 +362,7 @@ def run_menu(input_fn: Callable[[str], str] = input,
                 if last is None:
                     ui.message("SAVE REPORT", "Run a scan first.")
                 else:
-                    ui.screen("SAVE REPORT")
+                    ui.screen("SAVE REPORT", back=True)
                     text = _save_report(ui, last)
                     ui.screen("SAVE REPORT", text)
                     ui.choose("[Enter] Back ", any_click=True)
