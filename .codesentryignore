@@ -1,0 +1,5 @@
+# .codesentryignore
+# Files CodeSentry skips when scanning this repository: test fixtures and
+# the rule definitions contain example vulnerabilities on purpose.
+tests
+codesentry/rules_*.py

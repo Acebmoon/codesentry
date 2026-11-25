@@ -18,3 +18,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest
+      - name: Self-scan
+        run: python -m codesentry .

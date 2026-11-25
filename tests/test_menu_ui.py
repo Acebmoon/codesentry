@@ -51,3 +51,20 @@ def test_no_args_non_interactive_fails(monkeypatch):
     with pytest.raises(SystemExit) as e:
         main([])
     assert e.value.code == 2
+
+
+def test_codesentryignore_file_is_honored(tmp_path):
+    from codesentry.scan_engine import scan
+    (tmp_path / "keep.py").write_text("x = eval(s)\n")
+    (tmp_path / "fixtures").mkdir()
+    (tmp_path / "fixtures" / "bad.py").write_text("x = eval(s)\n")
+    (tmp_path / ".codesentryignore").write_text("# skip fixtures\nfixtures\n")
+    files = {f.file for f in scan([str(tmp_path)])}
+    assert files == {str(tmp_path / "keep.py")}
+
+
+def test_repo_scans_clean():
+    import os
+    from codesentry.scan_engine import scan
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    assert scan([root]) == []

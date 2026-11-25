@@ -116,7 +116,22 @@ def _excluder(root: str, exclude_globs: Iterable[str]) -> Callable[[str], bool]:
     return excluded
 
 
+IGNORE_FILE = ".codesentryignore"
+
+
+def read_ignore_file(folder: str) -> List[str]:
+    """Globs from `<folder>/.codesentryignore`: one per line, blank lines and '#' comments skipped."""
+    try:
+        with open(os.path.join(folder, IGNORE_FILE), "r", encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh]
+    except OSError:
+        return []
+    return [ln for ln in lines if ln and not ln.startswith("#")]
+
+
 def iter_files(path: str, exclude_globs: Iterable[str] = ()) -> Iterable[str]:
+    if os.path.isdir(path):
+        exclude_globs = list(exclude_globs) + read_ignore_file(path)
     if os.path.isfile(path):
         if not _excluder(os.path.dirname(path) or ".", exclude_globs)(path):
             yield path

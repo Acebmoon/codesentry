@@ -193,7 +193,7 @@ RULES = [
        r"(?i)\bdebug\s*[:=]\s*(?:true|1)\b",
        "Disable debug in production builds.", exts=CODE_EXTS | CONFIG_EXTS),
     _r("CS-CFG-002", "Binding to 0.0.0.0", "LOW", "CWE-668",
-       r"(?<![\d.])0\.0\.0\.0(?!\.?\d)",  # not inside 10.0.0.0/8 or 0.0.0.01
+       r"(?<![\d.])0\.0\.0\.0(?!\.?\d|/)",  # not inside 10.0.0.0/8, 0.0.0.01 or the CIDR 0.0.0.0/0
        "Bind to localhost unless public exposure is intended.", exts=CODE_EXTS | CONFIG_EXTS),
 ]
 

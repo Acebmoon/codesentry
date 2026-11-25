@@ -56,7 +56,7 @@ def banner() -> str:
 def _setup_console() -> None:
     """Make colors and block characters work in cmd.exe / PowerShell."""
     if os.name == "nt":
-        os.system("")  # enables ANSI escape codes
+        os.system("")  # codesentry:ignore[CS-INJ-002] constant empty command, enables ANSI colors
         try:
             import ctypes
             ctypes.windll.kernel32.SetConsoleOutputCP(65001)

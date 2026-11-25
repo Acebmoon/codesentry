@@ -108,3 +108,8 @@ MIT
 ## Acknowledgements
 
 The extra rule packs (`CS-SEC-009` and up) were designed after studying the vulnerability classes documented in [Claude-BugHunter](https://github.com/elementalsouls/Claude-BugHunter) (code MIT, content CC BY 4.0). That project is an offensive bug-bounty toolkit; CodeSentry only borrows the *classes of weakness* and detects them in your own source. All patterns here were written from scratch.
+
+## Ignoring files
+
+Put a `.codesentryignore` in the folder you scan, one glob per line (`#` for comments), e.g. `tests` or `build/**`.
+CodeSentry also reads it automatically. Single lines can be silenced with `# codesentry:ignore[CS-XXX-000]`.
