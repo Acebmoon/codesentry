@@ -75,3 +75,14 @@ def test_exclude_globs_and_ignore_file_apply_to_history(repo):
         not any(f.file.startswith("config.py") for f in scan_history(str(repo), exclude_globs=["config.py"]))
     (repo / ".codesentryignore").write_text("config.py\n")
     assert not any(f.file.startswith("config.py") for f in scan_history(str(repo)))
+
+
+def test_excluded_folder_hides_its_files_in_the_history(tmp_path):
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "t.py").write_text(SECRET)
+    _git(tmp_path, "add", "."); _git(tmp_path, "commit", "-qm", "fixture")
+    assert scan_history(str(tmp_path))                                   # found without an ignore
+    (tmp_path / ".codesentryignore").write_text("tests\n")
+    assert scan_history(str(tmp_path)) == []
+    assert scan_history(str(tmp_path), use_ignore_file=False)

@@ -78,9 +78,18 @@ def _setup_console() -> None:
             pass
 
 
+_HOME_VARS = ("$env:USERPROFILE", "$HOME", "$env:HOME")
+
+
 def _clean_path(raw: str) -> str:
-    """Drag-and-drop adds quotes around paths; strip them."""
-    return raw.strip().strip('"').strip("'")
+    """Drag-and-drop adds quotes around paths; strip them. Also understands ~, $HOME,
+    $env:USERPROFILE (PowerShell style) and %VAR% / $VAR."""
+    path = raw.strip().strip('"').strip("'")
+    for var in _HOME_VARS:
+        if path.lower().startswith(var.lower()) and path[len(var):len(var) + 1] in ("", "\\", "/"):
+            path = os.path.expanduser("~") + path[len(var):]
+            break
+    return os.path.expandvars(os.path.expanduser(path))
 
 
 def _clear_screen() -> None:

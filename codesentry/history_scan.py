@@ -43,6 +43,12 @@ def _git_log(path: str) -> str:
     return out.stdout.decode("utf-8", errors="replace")
 
 
+def _is_excluded(excluded, root: str, file: str) -> bool:
+    """The file itself or any folder above it matches an exclude pattern (e.g. `tests`)."""
+    parts = file.split("/")
+    return any(excluded(os.path.join(root, *parts[:i])) for i in range(1, len(parts) + 1))
+
+
 def scan_history(path: str, current: Iterable[Finding] = (), min_severity: str = "LOW",
                  exclude_globs: Iterable[str] = (), use_ignore_file: bool = True) -> List[Finding]:
     """Secret findings in lines that were ever added to the repo, reported once at the commit
@@ -88,7 +94,7 @@ def scan_history(path: str, current: Iterable[Finding] = (), min_severity: str =
         elif raw.startswith("+++ "):
             target = raw[4:]
             file = target[2:] if target.startswith("b/") else None
-            if file and (set(file.split("/")) & _SKIP_DIRS or excluded(os.path.join(root, file))):
+            if file and (set(file.split("/")) & _SKIP_DIRS or _is_excluded(excluded, root, file)):
                 file = None
         elif raw.startswith("@@"):
             m = _HUNK.match(raw)

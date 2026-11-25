@@ -113,3 +113,15 @@ def test_b_goes_back_from_every_input_screen(tmp_path):
     lines2 = []
     run_menu(_feed(["1", str(src), "s", "b", "b", "6"]), lines2.append)
     assert any("Cancelled." in l for l in lines2)
+
+
+def test_paths_understand_home_shortcuts(monkeypatch, tmp_path):
+    from codesentry.menu_ui import _clean_path
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    import os
+    for raw in ("$HOME/x", "$HOME\\x", '"$HOME/x"', "~/x", "$env:USERPROFILE/x"):
+        assert _clean_path(raw) == os.path.join(str(tmp_path), "x") or \
+            _clean_path(raw).replace("\\", "/") == str(tmp_path).replace("\\", "/") + "/x", raw
+    assert _clean_path('"C:/Some Folder/a.py"') == "C:/Some Folder/a.py"
+    assert _clean_path("$HOMEWORK/x") == "$HOMEWORK/x"                   # only the variable itself
