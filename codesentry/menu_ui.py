@@ -25,9 +25,32 @@ _FONT = {
 }
 
 
-def banner(word: str = "CODESENTRY") -> str:
-    rows = ["  ".join(_FONT[ch][i] for ch in word) for i in range(5)]
-    return RED + "\n".join(rows) + RESET
+MAIN = "\033[38;5;203m"    # coral red, letter body
+SHADOW = "\033[38;5;88m"   # dark red, outline/shadow
+
+
+def _word_rows(word: str, scale: int = 2):
+    """Big block letters: each pixel is `scale` columns wide, plus a shadow offset one cell down-right."""
+    base = [" ".join(_FONT[ch][i] for ch in word) for i in range(5)]
+    h, w = len(base) + 1, len(base[0]) * scale + 2
+    grid = [[(" ", "") for _ in range(w)] for _ in range(h)]
+    for y, row in enumerate(base):
+        for x, c in enumerate(row):
+            if c != " ":
+                for k in range(scale):
+                    grid[y + 1][x * scale + k + 1] = ("▒", SHADOW)
+    for y, row in enumerate(base):
+        for x, c in enumerate(row):
+            if c != " ":
+                for k in range(scale):
+                    grid[y][x * scale + k] = ("█", MAIN)
+    return ["".join(f"{col}{ch}{RESET}" if col else ch for ch, col in line).rstrip() for line in grid]
+
+
+def banner() -> str:
+    """CODE / SENTRY in big outlined pixel letters (fits an 80-column terminal)."""
+    lines = _word_rows("CODE") + _word_rows("SENTRY")
+    return "\n".join(lines)
 
 
 def _setup_console() -> None:

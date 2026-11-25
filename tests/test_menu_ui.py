@@ -10,8 +10,10 @@ def _feed(answers):
     return lambda prompt="": next(it)
 
 
-def test_banner_has_five_rows():
-    assert banner().count("\n") == 4
+def test_banner_fits_80_columns():
+    import re
+    lines = re.sub(r"\x1b\[[0-9;]*m", "", banner()).split("\n")
+    assert max(len(l) for l in lines) <= 80 and len(lines) == 12
 
 
 def test_exit_option():
