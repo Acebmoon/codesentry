@@ -57,6 +57,8 @@ Other platforms (attached to each release too):
 | System | File | Install |
 |---|---|---|
 | Debian / Ubuntu | `codesentry_<version>_amd64.deb` | `sudo apt install ./codesentry_*_amd64.deb`, then run `codesentry` |
+| Fedora / RHEL | `codesentry-<version>-1.x86_64.rpm` | `sudo dnf install ./codesentry-*.x86_64.rpm` |
+| Arch Linux | `codesentry-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U codesentry-*.pkg.tar.zst` |
 | macOS Apple Silicon | `codesentry-macos-arm64.tar.gz` | `tar -xzf codesentry-macos-arm64.tar.gz` |
 | macOS Intel | `codesentry-macos-intel.tar.gz` | `tar -xzf codesentry-macos-intel.tar.gz` |
 

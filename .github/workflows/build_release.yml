@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach the files to (optional)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -26,12 +31,12 @@ jobs:
           name: codesentry-windows
           path: dist/codesentry-windows.exe
       - name: Attach to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/codesentry-windows.exe --clobber
+        run: gh release upload "${{ github.event.release.tag_name || inputs.tag }}" dist/codesentry-windows.exe --clobber
 
-  debian:
+  linux:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -64,22 +69,42 @@ jobs:
           sed -i 's/^          //' "$PKG/DEBIAN/control"
           dpkg-deb --build --root-owner-group "$PKG"
           dpkg-deb --info "$PKG.deb"
-          echo "DEB=$PKG.deb" >> "$GITHUB_ENV"
+      - name: Build .rpm (Fedora) and .pkg.tar.zst (Arch)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm libarchive-tools zstd ruby
+          sudo gem install fpm --no-document
+          VERSION=$(python -c "import codesentry; print(codesentry.__version__)")
+          mkdir -p root/usr/bin
+          install -m 0755 dist/codesentry root/usr/bin/codesentry
+          COMMON=(-s dir -n codesentry -v "$VERSION" --iteration 1 -a x86_64
+            --description "Static scanner for hardcoded secrets and vulnerabilities"
+            --url https://github.com/Acebmoon/codesentry --license MIT
+            --maintainer "Acebmoon <Acebmoon@users.noreply.github.com>")
+          fpm "${COMMON[@]}" -t rpm -p "codesentry-${VERSION}-1.x86_64.rpm" -C root usr/bin/codesentry
+          fpm "${COMMON[@]}" -t pacman --pacman-compression zstd -p "codesentry-${VERSION}-1-x86_64.pkg.tar.zst" -C root usr/bin/codesentry
+          ls -la *.rpm *.pkg.tar.zst
+          rpm -qpi codesentry-*.rpm
+          zstd -dc codesentry-*.pkg.tar.zst | tar -t
       - uses: actions/upload-artifact@v4
         with:
-          name: codesentry-deb
-          path: ${{ env.DEB }}
+          name: codesentry-linux
+          path: |
+            *.deb
+            *.rpm
+            *.pkg.tar.zst
       - name: Attach to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "$DEB" --clobber
+        run: gh release upload "${{ github.event.release.tag_name || inputs.tag }}" *.deb *.rpm *.pkg.tar.zst --clobber
 
   macos:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-latest
             name: macos-arm64
           - runner: macos-15-intel
             name: macos-intel
@@ -103,7 +128,7 @@ jobs:
           name: codesentry-${{ matrix.name }}
           path: codesentry-${{ matrix.name }}.tar.gz
       - name: Attach to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" codesentry-${{ matrix.name }}.tar.gz --clobber
+        run: gh release upload "${{ github.event.release.tag_name || inputs.tag }}" codesentry-${{ matrix.name }}.tar.gz --clobber

@@ -1,4 +1,4 @@
 # __init__.py
 """CodeSentry - static scanner for hardcoded secrets and common vulnerabilities."""
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
