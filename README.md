@@ -50,7 +50,20 @@ Secrets are masked in every format: only the secret itself is hidden (`password 
 
 Run `codesentry` with no arguments to open the interactive menu (banner, numbered options, JSON report export).
 The Windows `.exe` is built by GitHub Actions and attached to each release as `codesentry-windows.exe`:
-double-click it, or run it from a terminal. To build it yourself:
+double-click it, or run it from a terminal.
+
+Other platforms (attached to each release too):
+
+| System | File | Install |
+|---|---|---|
+| Debian / Ubuntu | `codesentry_<version>_amd64.deb` | `sudo apt install ./codesentry_*_amd64.deb`, then run `codesentry` |
+| macOS Apple Silicon | `codesentry-macos-arm64.tar.gz` | `tar -xzf codesentry-macos-arm64.tar.gz` |
+| macOS Intel | `codesentry-macos-intel.tar.gz` | `tar -xzf codesentry-macos-intel.tar.gz` |
+
+The macOS and Windows binaries are not code-signed. On macOS run `xattr -d com.apple.quarantine codesentry` once
+(or right-click > Open); on Windows click "More info > Run anyway" in SmartScreen.
+
+To build it yourself:
 
 ```
 py -m pip install pyinstaller

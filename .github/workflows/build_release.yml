@@ -1,0 +1,109 @@
+name: Build release binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build executable
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --onefile --name codesentry exe_entry.py
+          Rename-Item dist\codesentry.exe codesentry-windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codesentry-windows
+          path: dist/codesentry-windows.exe
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/codesentry-windows.exe --clobber
+
+  debian:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build binary
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --onefile --name codesentry exe_entry.py
+          ./dist/codesentry --version
+      - name: Build .deb
+        run: |
+          VERSION=$(python -c "import codesentry; print(codesentry.__version__)")
+          PKG="codesentry_${VERSION}_amd64"
+          mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin"
+          install -m 0755 dist/codesentry "$PKG/usr/bin/codesentry"
+          cat > "$PKG/DEBIAN/control" <<CTRL
+          Package: codesentry
+          Version: ${VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Acebmoon <Acebmoon@users.noreply.github.com>
+          Homepage: https://github.com/Acebmoon/codesentry
+          Description: Static scanner for hardcoded secrets and vulnerabilities
+           Scans source code for leaked secrets and common vulnerabilities,
+           checks dependencies against OSV.dev and the git history.
+          CTRL
+          sed -i 's/^          //' "$PKG/DEBIAN/control"
+          dpkg-deb --build --root-owner-group "$PKG"
+          dpkg-deb --info "$PKG.deb"
+          echo "DEB=$PKG.deb" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codesentry-deb
+          path: ${{ env.DEB }}
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "$DEB" --clobber
+
+  macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            name: macos-arm64
+          - runner: macos-15-intel
+            name: macos-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build binary
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --onefile --name codesentry exe_entry.py
+          ./dist/codesentry --version
+          file dist/codesentry
+      - name: Package
+        run: |
+          tar -czf codesentry-${{ matrix.name }}.tar.gz -C dist codesentry
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codesentry-${{ matrix.name }}
+          path: codesentry-${{ matrix.name }}.tar.gz
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" codesentry-${{ matrix.name }}.tar.gz --clobber
