@@ -15,7 +15,9 @@ from .deps_check import check_deps, find_manifests, not_checked_warning, DepsErr
 
 _URL = re.compile(
     r"^(?:https?://)?(?:www\.)?github\.com/(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
-    r"/(?P<repo>[A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:/(?:tree|blob)/.*)?/?$")
+    r"/(?P<repo>[A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:/(?:tree|blob)/(?P<ref>[^/?#]+)(?:/.*)?)?/?$")
+# A branch or tag name that is safe to hand to `git clone --branch`.
+_REF = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._-]{1,200}$")
 CLONE_TIMEOUT = 120
 
 
@@ -74,14 +76,21 @@ def is_repo_url(text: str) -> bool:
     return parse_repo_url(text) is not None
 
 
+def parse_repo_ref(text: str) -> Optional[str]:
+    """The branch or tag of a /tree/<ref> or /blob/<ref> link, or None for the default branch.
+    Only the first path segment is read, so a branch with a slash in its name is not supported."""
+    m = _URL.match(text.strip())
+    return m.group("ref") if m and parse_repo_url(text) else None
+
+
 def _clone_url(owner: str, repo: str) -> str:
     return f"https://github.com/{owner}/{repo}.git"
 
 
-def _clone(url: str, dest: str) -> None:
+def _clone(url: str, dest: str, ref: Optional[str] = None) -> None:
     # Arguments as a list (no shell); hooks disabled; no credential prompt.
     cmd = ["git", "-c", "core.hooksPath=" + os.devnull, "-c", "core.symlinks=false",
-           "clone", "--depth", "1", "--no-tags", "--quiet", "--", url, dest]
+           "clone", "--depth", "1", "--no-tags", "--quiet", *(["--branch", ref] if ref else []), "--", url, dest]
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=CLONE_TIMEOUT, env=env)
@@ -124,6 +133,10 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
     if not parsed:
         raise RepoError("not a GitHub repository link (expected https://github.com/owner/repo)")
     owner, repo = parsed
+    # A /tree/<branch> link scans that branch; before, it silently scanned the default one.
+    ref = parse_repo_ref(link)
+    if ref is not None and not _REF.match(ref):
+        raise RepoError(f"unsupported branch name in the link: {ref!r}")
     if keep:
         os.makedirs(downloads_dir(), exist_ok=True)
         root = download_path(owner, repo)
@@ -134,7 +147,7 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
         tmp = tempfile.mkdtemp(prefix="codesentry-")
         root = os.path.join(tmp, "repo")
     try:
-        _clone(_clone_url(owner, repo), root)
+        _clone(_clone_url(owner, repo), root, ref)
         _drop_links_and_git(root)
         inner: List[SkippedFile] = []
         found = scan([root], exclude_globs, min_severity, max_file_bytes, inner, use_ignore_file=False)
