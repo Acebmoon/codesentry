@@ -129,7 +129,7 @@ def test_menu_asks_for_permission(server):
 
 def test_menu_scans_site(server):
     lines = []
-    run_menu(_feed(["3", server, "y", "b", "7"]), lines.append)
+    run_menu(_feed(["3", server, "y", "n", "b", "7"]), lines.append)
     assert any("Total:" in l for l in lines) and any("CS-WEB" in l for l in lines)
 
 
@@ -148,3 +148,165 @@ def test_expired_or_untrusted_certificate_is_reported(monkeypatch):
     monkeypatch.setattr(site_scan.socket, "create_connection", boom)
     found, ok = site_scan._scan_tls("example.test", 443, "https://example.test/")
     assert not ok and found[0].severity == "HIGH" and "self-signed" in found[0].snippet
+
+
+# ---------------------------------------------------------------- v0.8.1: deeper checks
+import base64
+import json as _json
+
+
+def _jwt(payload):
+    enc = lambda d: base64.urlsafe_b64encode(_json.dumps(d).encode()).rstrip(b"=").decode()
+    return f"{enc({'alg': 'HS256'})}.{enc(payload)}.{'s' * 20}"
+
+
+class _Deep(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _send(self, status, body, ctype="text/html"):
+        data = body.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == "/":
+            self._send(200, """<html><head><script src="/assets/app.js"></script>
+            <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script></head>
+            <body><!-- TODO remove the admin password before launch -->
+            <form method="get" action="/login"><input type="password" name="pw"></form></body></html>""")
+        elif self.path == "/assets/app.js":
+            self._send(200, f'const s="{_jwt({"role": "service_role", "iss": "supabase"})}";'
+                            f'const a="{_jwt({"role": "anon", "iss": "supabase"})}";'
+                            'fetch("http://192.168.1.20:3000/api");\n//# sourceMappingURL=app.js.map',
+                       "application/javascript")
+        elif self.path == "/assets/app.js.map":
+            self._send(200, '{"version":3,"sources":["src/App.tsx"],"mappings":"AAAA"}', "application/json")
+        elif self.path == "/robots.txt":
+            self._send(200, "User-agent: *\nDisallow: /admin-panel/\nDisallow: /public/", "text/plain")
+        elif self.path == "/actuator/env":
+            self._send(200, '{"propertySources":[]}', "application/json")
+        elif self.path == "/uploads/":
+            self._send(200, "<html><head><title>Index of /uploads</title></head></html>")
+        else:
+            self._send(200, "<html><body>Welcome</body></html>")      # single-page-app style: 200 for everything
+
+
+@pytest.fixture()
+def deep():
+    httpd = HTTPServer(("127.0.0.1", 0), _Deep)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_port}/"
+    httpd.shutdown()
+
+
+def test_deeper_checks(deep):
+    found = scan_site(deep)
+    by_id = {}
+    for f in found:
+        by_id.setdefault(f.rule_id, []).append(f)
+    assert any(f.severity == "HIGH" and "service_role" in f.name for f in by_id["CS-WEB-030"])
+    assert any("anon key" in f.name and f.severity == "LOW" for f in by_id["CS-WEB-031"])
+    assert "CS-WEB-032" not in by_id                              # supabase keys are not reported as generic JWTs
+    assert by_id["CS-WEB-034"][0].file.endswith("/assets/app.js.map")
+    assert any(f.name == "Spring Boot environment exposed" or "Actuator" in f.name or "environment" in f.name
+               for f in by_id["CS-WEB-021"])
+    assert "CS-WEB-022" in by_id and "/admin-panel/" in by_id["CS-WEB-022"][0].snippet
+    assert "CS-WEB-027" in by_id and "password" in by_id["CS-WEB-027"][0].snippet     # words only, never the comment text
+    assert "CS-WEB-028" in by_id                                  # password form using GET
+    assert any(f.name == "Directory listing enabled" and f.file.endswith("/uploads/") for f in found)
+    assert "CS-WEB-025" in by_id and "CS-WEB-026" not in by_id    # no cookies here
+    # the key itself is never printed
+    assert all(len(f.snippet) <= 12 for f in by_id["CS-WEB-030"] + by_id["CS-WEB-031"])
+
+
+def test_single_page_app_answering_200_everywhere_gives_no_exposed_files():
+    class Spa(_Deep):
+        def do_GET(self):
+            self._send(200, "<!doctype html><html><body><div id='root'></div></body></html>")
+    httpd = HTTPServer(("127.0.0.1", 0), Spa)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        found = scan_site(f"http://127.0.0.1:{httpd.server_port}/")
+    finally:
+        httpd.shutdown()
+    assert not any(f.rule_id in ("CS-WEB-021", "CS-WEB-022") for f in found)
+
+
+def test_libraries_are_found_and_checked_only_when_asked(deep, monkeypatch):
+    from codesentry import site_scan
+    seen = []
+
+    def fake(deps, min_severity="LOW"):
+        seen.extend((d.name, d.version) for d in deps)
+        return []
+    monkeypatch.setattr(site_scan, "check_packages", fake)
+    scan_site(deep)
+    assert seen == []                                             # nothing is sent unless deps=True
+    scan_site(deep, deps=True)
+    assert ("jquery", "1.12.4") in seen
+
+
+def test_find_libraries_patterns():
+    from codesentry.site_js import find_libraries
+    text = ("/*! jQuery JavaScript Library v3.4.1 */ /* axios v0.21.1 | (c) */ //! version : 2.18.1\n"
+            "https://cdn.jsdelivr.net/npm/lodash@4.17.4/lodash.min.js @license React v17.0.2")
+    libs = dict(find_libraries(text))
+    assert libs["jquery"] == "3.4.1" and libs["axios"] == "0.21.1" and libs["lodash"] == "4.17.4"
+    assert libs["react"] == "17.0.2"
+
+
+def test_weak_csp_and_hsts_and_cookie_cache():
+    from codesentry.site_scan import _scan_headers, _csp_problems
+    from codesentry.site_http import Resp
+    from email.message import Message
+    m = Message()
+    m["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' *"
+    m["Strict-Transport-Security"] = "max-age=300"
+    m["Set-Cookie"] = "sid=1; Secure; HttpOnly; SameSite=Lax"
+    found = _scan_headers("https://x.test/", Resp(200, m, b"", "https://x.test/"), True)
+    ids = {f.rule_id for f in found}
+    assert {"CS-WEB-023", "CS-WEB-024", "CS-WEB-026"} <= ids
+    assert _csp_problems("script-src 'nonce-abc' 'unsafe-inline'") == []     # nonce makes unsafe-inline ignored
+
+
+def test_internal_addresses_and_google_key_note():
+    from codesentry.site_js import scan_internal
+    from codesentry.site_scan import _scan_secrets
+    assert scan_internal("u", 'fetch("http://localhost:3000/x")')[0].rule_id == "CS-WEB-033"
+    key = "AIza" + "SyA1234567890abcdefghijklmnopqrstuv"
+    found = _scan_secrets("u", f'const k="{key}"')
+    assert found and found[0].severity == "LOW" and key not in found[0].snippet
+
+
+def test_check_packages_is_shared_with_the_manifest_check(monkeypatch):
+    from codesentry import deps_check
+    monkeypatch.setattr(deps_check, "_post", lambda *a: {"results": [{"vulns": [{"id": "GHSA-x"}]}]})
+    monkeypatch.setattr(deps_check, "_get", lambda url: {"id": "GHSA-x", "summary": "bad", "database_specific": {"severity": "HIGH"}})
+    found = deps_check.check_packages([deps_check.Dep("jquery", "1.12.4", "npm", "jquery 1.12.4 (site)", 1)])
+    assert found and found[0].severity == "HIGH" and "jquery 1.12.4" in found[0].name
+
+
+@pytest.mark.skipif(__import__("shutil").which("openssl") is None, reason="needs the openssl command")
+def test_self_signed_https_site_is_reported_and_still_scanned(tmp_path):
+    import ssl
+    import subprocess
+    cert, key = tmp_path / "c.pem", tmp_path / "k.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(cert),
+                    "-days", "30", "-subj", "/CN=localhost"], check=True, capture_output=True)
+    httpd = HTTPServer(("127.0.0.1", 0), _Vulnerable)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(str(cert), str(key))
+    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    warnings = []
+    try:
+        found = scan_site(f"https://127.0.0.1:{httpd.server_port}/", warnings=warnings)
+    finally:
+        httpd.shutdown()
+    assert any(f.rule_id == "CS-WEB-003" and f.severity == "HIGH" for f in found)
+    assert any(f.name == "Environment file exposed" for f in found)          # the scan went on
+    assert warnings and "not trusted" in warnings[0]

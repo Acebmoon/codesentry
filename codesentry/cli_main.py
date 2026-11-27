@@ -47,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--history", action="store_true",
                    help="also look for secrets in the git history of local repositories (committed once, later removed)")
     p.add_argument("--site", action="append", default=[], metavar="URL",
-                   help="passive check of a live website (headers, cookies, TLS, CORS, exposed files); repeatable")
+                   help="passive check of a live website (TLS, headers, cookies, CORS, exposed files, leaks in its "
+                        "JavaScript); repeatable. With --deps its JavaScript libraries are checked on OSV.dev")
     p.add_argument("--i-have-permission", action="store_true",
                    help="confirm you own the site(s) given to --site or may test them")
     p.add_argument("-o", "--output", metavar="FILE", help="write the report to a file")
@@ -103,7 +104,7 @@ def main(argv=None) -> int:
             return 2
     for site in args.site:
         try:
-            findings += scan_site(site, args.min_severity, warnings)
+            findings += scan_site(site, args.min_severity, warnings, args.deps)
         except SiteError as exc:
             print(f"codesentry: {exc}", file=sys.stderr)
             return 2

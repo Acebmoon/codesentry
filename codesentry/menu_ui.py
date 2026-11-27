@@ -395,7 +395,7 @@ def _scan_github(ui: _Ui):
 
 def _scan_site(ui: _Ui):
     ui.screen("SCAN WEBSITE", back=True)
-    ui.out(f"{DIM}Passive check: headers, cookies, TLS, CORS, exposed files. About 30 plain requests, nothing is attacked.{RESET}\n")
+    ui.out(f"{DIM}Passive check: TLS, headers, cookies, CORS, exposed files, leaks in the page and its scripts. About 100 plain requests, nothing is attacked.{RESET}\n")
     raw = ui.ask("[+] Website address (e.g. https://example.com): ", back=True)
     try:
         url = normalize_url(raw)
@@ -406,10 +406,11 @@ def _scan_site(ui: _Ui):
     if answer not in ("y", "yes", "s", "sim"):
         ui.message("SCAN WEBSITE", "Only scan sites you own or have permission to test.")
         return None
+    deps = ui.ask_yes("[+] Also check the JavaScript libraries it uses online (OSV.dev)? [Y/n]: ")
     ui.out(f"\n{DIM}Checking {url} ...{RESET}")
     warnings: List[str] = []
     try:
-        found = scan_site(url, warnings=warnings)
+        found = scan_site(url, warnings=warnings, deps=deps)
     except SiteError as exc:
         ui.message("SCAN WEBSITE", str(exc)[0].upper() + str(exc)[1:])
         return None

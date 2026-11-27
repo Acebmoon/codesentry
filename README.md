@@ -74,19 +74,19 @@ py -m PyInstaller --onefile --name codesentry exe_entry.py
 
 ## Website check
 
-`codesentry --site https://example.com --i-have-permission` (or menu option 3, `Scan website`) runs a **passive** check of a live site. About 30 plain GET/OPTIONS requests, nothing is guessed, fuzzed or exploited, so only use it on sites you own or may test (the flag and the menu question exist for that).
+`codesentry --site https://example.com --i-have-permission` (or menu option 3, `Scan website`) runs a **passive** check of a live site: about 100 plain GET/OPTIONS requests, a few at a time. Nothing is guessed, fuzzed, logged into or exploited, so only use it on sites you own or may test (the flag and the menu question exist for that). Add `--deps` (or answer Y in the menu) to also check the JavaScript libraries the site loads against OSV.dev; only library names and versions are sent.
 
 | Area | What it looks for |
 |---|---|
-| Transport | plain HTTP, no redirect to HTTPS, untrusted or soon-to-expire TLS certificate, missing HSTS, mixed content |
-| Headers | missing Content-Security-Policy, clickjacking protection, `nosniff`, Referrer-Policy; server and framework versions |
-| Cookies | missing `Secure`, `HttpOnly`, `SameSite` |
+| Transport | plain HTTP, HTTPS redirecting to HTTP, no redirect to HTTPS, untrusted or soon-to-expire certificate, TLS 1.0/1.1 still accepted, missing or short HSTS, mixed content |
+| Headers | missing or weak Content-Security-Policy (`unsafe-inline`, wildcards), clickjacking protection, `nosniff`, Referrer-Policy, Permissions-Policy; server and framework versions |
+| Cookies | missing `Secure`, `HttpOnly`, `SameSite`; pages that set a cookie and can be cached |
 | CORS and methods | origin reflection (worse with credentials), `*` with credentials, PUT/DELETE/TRACE enabled |
-| Exposed files | `/.git`, `/.env`, `.htpasswd`, backups and SQL dumps, `phpinfo()`, `server-status` (each one is verified by its content, so a custom 404 page is not reported) |
-| Page content | directory listing, debug consoles and stack traces, SQL/PHP errors, password forms over HTTP, POST forms without a CSRF token, third-party scripts without integrity |
-| Leaked secrets | the same secret rules as the code scan, applied to the page and to up to 8 of its own scripts |
+| Exposed files | about 90 paths: `.git`, `.env`, `.htpasswd`, backups and SQL dumps, logs, `phpinfo()`, Spring Boot Actuator, debug consoles, Swagger/OpenAPI, phpMyAdmin, WordPress extras, directory listings. Each one is verified by its content, so a custom 404 page or a single-page app that answers 200 for everything is not reported |
+| Page content | debug consoles, stack traces and SQL/PHP errors, password forms over HTTP or using GET, POST forms without a CSRF token, third-party scripts without integrity, comments that mention passwords or tokens, `robots.txt` pointing at sensitive-looking paths |
+| JavaScript | secrets (same rules as the code scan), Supabase `service_role` keys (HIGH) and anon keys (a reminder to check Row Level Security), other embedded JWTs, development and private addresses, source maps left on the server, libraries with known vulnerabilities (`--deps`) |
 
-Findings use the rule ids `CS-WEB-001..021` and appear in every format (`-f html`, `json`, `sarif`). The `--history`, `--deps` and `--exclude` options do not apply to sites.
+Findings use the rule ids `CS-WEB-001..034` (library findings carry the OSV id) and appear in every format (`-f html`, `json`, `sarif`). A passive scan sees configuration and leaks; it cannot find logic bugs, injection or broken access control, which need a human or an active scanner.
 
 ## Ignoring false positives
 

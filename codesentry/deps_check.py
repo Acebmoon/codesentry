@@ -161,7 +161,11 @@ def _fixed_version(vuln: dict, dep: Dep) -> Optional[str]:
 def check_deps(manifests: Iterable[str], min_severity: str = "LOW") -> List[Finding]:
     """Findings for pinned dependencies with known vulnerabilities. Raises DepsError
     if OSV.dev cannot be reached."""
-    deps = read_deps(manifests)
+    return check_packages(read_deps(manifests), min_severity)
+
+
+def check_packages(deps: List[Dep], min_severity: str = "LOW") -> List[Finding]:
+    """Same check for packages that did not come from a manifest (e.g. libraries found in a website)."""
     if not deps:
         return []
     try:
