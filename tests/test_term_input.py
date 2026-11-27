@@ -48,22 +48,22 @@ class FakeMouse:
 def test_menu_registers_clickable_lines_and_reads_choices_from_the_mouse(tmp_path):
     src = tmp_path / "a.py"
     src.write_text("x = 1\n")
-    mouse = FakeMouse(["6"])
+    mouse = FakeMouse(["7"])
     typed = iter([])
     run_menu(lambda p="": next(typed), lambda s: None, mouse=mouse)
     prompt, hot, wheel, _ = mouse.calls[0]
     assert prompt == "[+] Option: "
     cmds = sorted(c for segs in hot.values() for _, _, c in segs)
-    assert cmds == ["1", "2", "3", "4", "5", "6"]
+    assert cmds == ["1", "2", "3", "4", "5", "6", "7"]
     rows = sorted(hot)
-    assert rows == list(range(rows[0], rows[0] + 6))                  # six consecutive lines
+    assert rows == list(range(rows[0], rows[0] + 7))                  # seven consecutive lines
 
 
 def test_results_screen_buttons_and_wheel(tmp_path):
     src = tmp_path / "a.py"
     src.write_text('password = "hunter2hunter2"\n')
-    # menu: 1 (scan), then in results: wheel down ('n'), 'b' back, menu: 6 exit
-    mouse = FakeMouse(["1", "n", "b", "6"])
+    # menu: 1 (scan), then in results: wheel down ('n'), 'b' back, menu: 7 exit
+    mouse = FakeMouse(["1", "n", "b", "7"])
     typed = iter([str(src)])
     run_menu(lambda p="": next(typed), lambda s: None, mouse=mouse)
     results = [c for c in mouse.calls if c[0] == "[+] Command: "]

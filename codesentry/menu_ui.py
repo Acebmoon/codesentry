@@ -15,6 +15,7 @@ from .history_scan import scan_history, is_git_repo, HistoryError
 from .deps_check import check_deps, find_manifests, DepsError
 from .report_output import as_json, as_text, as_html
 from .clipboard import copy_text, ClipboardError
+from .site_scan import scan_site, SiteError, normalize_url
 from .repo_fetch import (is_repo_url, scan_repo, RepoError, parse_repo_url, download_path,
                          downloads_dir, list_downloads, delete_download, delete_all_downloads)
 
@@ -388,8 +389,31 @@ def _scan_github(ui: _Ui):
         return None
     notes = [w[0].upper() + w[1:] for w in warnings]
     if keep:
-        notes += [f"Copy kept in {download_path(*parse_repo_url(link))}. Delete it in [5] Downloaded repos."]
+        notes += [f"Copy kept in {download_path(*parse_repo_url(link))}. Delete it in [6] Downloaded repos."]
     return found, skipped, notes
+
+
+def _scan_site(ui: _Ui):
+    ui.screen("SCAN WEBSITE", back=True)
+    ui.out(f"{DIM}Passive check: headers, cookies, TLS, CORS, exposed files. About 30 plain requests, nothing is attacked.{RESET}\n")
+    raw = ui.ask("[+] Website address (e.g. https://example.com): ", back=True)
+    try:
+        url = normalize_url(raw)
+    except SiteError as exc:
+        ui.message("SCAN WEBSITE", str(exc))
+        return None
+    answer = ui.ask("[+] Do you own this site or have permission to test it? [y/N]: ", back=True).lower()
+    if answer not in ("y", "yes", "s", "sim"):
+        ui.message("SCAN WEBSITE", "Only scan sites you own or have permission to test.")
+        return None
+    ui.out(f"\n{DIM}Checking {url} ...{RESET}")
+    warnings: List[str] = []
+    try:
+        found = scan_site(url, warnings=warnings)
+    except SiteError as exc:
+        ui.message("SCAN WEBSITE", str(exc)[0].upper() + str(exc)[1:])
+        return None
+    return found, [], [w[0].upper() + w[1:] for w in warnings]
 
 
 def run_menu(input_fn: Callable[[str], str] = input,
@@ -402,29 +426,28 @@ def run_menu(input_fn: Callable[[str], str] = input,
     try:
         while True:
             ui.clear()
-            ui.out("")
             ui.out(banner())
             ui.out(f"\n{RED}   STATIC CODE SCANNER  v{__version__}{RESET}\n")
-            for number, label in enumerate(("Start Scan", "Scan GitHub repo", "View last results",
+            for number, label in enumerate(("Start Scan", "Scan GitHub repo", "Scan website", "View last results",
                                             "Export last report", "Downloaded repos", "Exit"), 1):
                 ui.out(f"[{number}] {label}", hot=str(number))
             ui.out("")
             choice = ui.choose("[+] Option: ")
 
-            if choice in ("1", "2"):
+            if choice in ("1", "2", "3"):
                 try:
-                    result = _scan_local(ui) if choice == "1" else _scan_github(ui)
+                    result = {"1": _scan_local, "2": _scan_github, "3": _scan_site}[choice](ui)
                 except _Back:
                     continue
                 if result:
                     last, last_skipped, notes = result
                     results_screen(ui, last, last_skipped, notes)
-            elif choice == "3":
+            elif choice == "4":
                 if last is None:
                     ui.message("RESULTS", "Run a scan first.")
                 else:
                     results_screen(ui, last, last_skipped)
-            elif choice == "4":
+            elif choice == "5":
                 if last is None:
                     ui.message("EXPORT REPORT", "Run a scan first.")
                 else:
@@ -432,9 +455,9 @@ def run_menu(input_fn: Callable[[str], str] = input,
                         _export(ui, last, last_skipped)
                     except _Back:
                         continue
-            elif choice == "5":
-                _manage_downloads(ui)
             elif choice == "6":
+                _manage_downloads(ui)
+            elif choice == "7":
                 return 0
             else:
                 ui.message("MENU", "Invalid option.")

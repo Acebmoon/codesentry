@@ -101,7 +101,7 @@ def test_menu_scan_repo_view_results_and_delete(local_repo, tmp_path, monkeypatc
     monkeypatch.setenv("CODESENTRY_HOME", str(tmp_path / "home"))
     lines = []
     # scan repo (keep), view results again, open downloads, delete #1, back, exit
-    run_menu(_feed(["2", "https://github.com/o/r", "", "n", "b", "3", "b", "5", "1", "", "6"]), lines.append)
+    run_menu(_feed(["2", "https://github.com/o/r", "", "n", "b", "4", "b", "6", "1", "", "7"]), lines.append)
     text = "\n".join(lines)
     assert text.count("o/r/app.py") == 2          # shown after the scan and again by option 3
     assert "Copy kept in" in text and "Deleted." in text
@@ -110,11 +110,11 @@ def test_menu_scan_repo_view_results_and_delete(local_repo, tmp_path, monkeypatc
 
 def test_menu_scan_repo_without_keeping(local_repo, tmp_path, monkeypatch):
     monkeypatch.setenv("CODESENTRY_HOME", str(tmp_path / "home"))
-    run_menu(_feed(["2", "https://github.com/o/r", "n", "n", "b", "6"]), lambda s: None)
+    run_menu(_feed(["2", "https://github.com/o/r", "n", "n", "b", "7"]), lambda s: None)
     assert repo_fetch.list_downloads() == []
 
 
 def test_menu_view_results_before_any_scan():
     lines = []
-    run_menu(_feed(["3", "", "6"]), lines.append)
+    run_menu(_feed(["4", "", "7"]), lines.append)
     assert any("Run a scan first" in l for l in lines)

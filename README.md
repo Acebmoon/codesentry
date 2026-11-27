@@ -72,6 +72,22 @@ py -m pip install pyinstaller
 py -m PyInstaller --onefile --name codesentry exe_entry.py
 ```
 
+## Website check
+
+`codesentry --site https://example.com --i-have-permission` (or menu option 3, `Scan website`) runs a **passive** check of a live site. About 30 plain GET/OPTIONS requests, nothing is guessed, fuzzed or exploited, so only use it on sites you own or may test (the flag and the menu question exist for that).
+
+| Area | What it looks for |
+|---|---|
+| Transport | plain HTTP, no redirect to HTTPS, untrusted or soon-to-expire TLS certificate, missing HSTS, mixed content |
+| Headers | missing Content-Security-Policy, clickjacking protection, `nosniff`, Referrer-Policy; server and framework versions |
+| Cookies | missing `Secure`, `HttpOnly`, `SameSite` |
+| CORS and methods | origin reflection (worse with credentials), `*` with credentials, PUT/DELETE/TRACE enabled |
+| Exposed files | `/.git`, `/.env`, `.htpasswd`, backups and SQL dumps, `phpinfo()`, `server-status` (each one is verified by its content, so a custom 404 page is not reported) |
+| Page content | directory listing, debug consoles and stack traces, SQL/PHP errors, password forms over HTTP, POST forms without a CSRF token, third-party scripts without integrity |
+| Leaked secrets | the same secret rules as the code scan, applied to the page and to up to 8 of its own scripts |
+
+Findings use the rule ids `CS-WEB-001..021` and appear in every format (`-f html`, `json`, `sarif`). The `--history`, `--deps` and `--exclude` options do not apply to sites.
+
 ## Ignoring false positives
 
 Add a `nosec` or `codesentry:ignore` comment to the line, in any comment style (`#`, `//`, `/* */`, `<!-- -->`, `--`). The marker must be a whole word inside the comment, so `nosecurity` or a string containing "nosec" do not silence anything.
@@ -140,7 +156,7 @@ scans it and deletes it. Public repositories only; nothing from the repository i
 `.codesentryignore` is not applied. Use it to review code you are allowed to check and to report problems to the owner.
 
 Add `--keep` to keep the downloaded copy. In the menu you choose whether to keep it, can show the last results again
-(option 3) and delete downloaded repos one by one or all at once (option 5). Copies are stored in
+(option 4) and delete downloaded repos one by one or all at once (option 6). Copies are stored in
 `~/.codesentry/downloads`.
 
 ## Checking dependencies
@@ -164,7 +180,7 @@ Every menu action opens its own screen with a `CODESENTRY > TITLE` header and a 
 
 ## HTML report and copying results
 
-`codesentry . -f html -o report.html` writes a single self-contained page (dark theme, severity filter buttons, nothing loaded from the network; everything from the scanned code is escaped). In the menu, the results screen has `[R]eport HTML` (saves it and offers to open it in the browser) and `[C]opy` (copies the findings that are on screen, so a severity filter limits what is copied). Menu option 4, `Export last report`, offers HTML, JSON or the clipboard.
+`codesentry . -f html -o report.html` writes a single self-contained page (dark theme, severity filter buttons, nothing loaded from the network; everything from the scanned code is escaped). In the menu, the results screen has `[R]eport HTML` (saves it and offers to open it in the browser) and `[C]opy` (copies the findings that are on screen, so a severity filter limits what is copied). Menu option 5, `Export last report`, offers HTML, JSON or the clipboard.
 
 ## Results screen
 

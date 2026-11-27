@@ -84,7 +84,7 @@ def test_results_screen_copy_and_html(src, tmp_path, monkeypatch):
     page = tmp_path / "out.html"
     lines = []
     # filter High, copy (only what is shown), HTML report -> open it, back, exit
-    run_menu(_feed(["1", str(src), "h", "c", "r", str(page), "", "b", "6"]), lines.append)
+    run_menu(_feed(["1", str(src), "h", "c", "r", str(page), "", "b", "7"]), lines.append)
     assert len(copied) == 1 and "CS-SEC-007" in copied[0] and "CS-INJ-001" in copied[0]
     assert "Copied" in "\n".join(lines)
     assert page.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
@@ -96,7 +96,7 @@ def test_copy_failure_is_a_message_not_a_crash(src, monkeypatch):
         raise clipboard.ClipboardError("no tool")
     monkeypatch.setattr(menu_ui, "copy_text", boom)
     lines = []
-    run_menu(_feed(["1", str(src), "c", "b", "6"]), lines.append)
+    run_menu(_feed(["1", str(src), "c", "b", "7"]), lines.append)
     assert any("Could not copy: no tool" in l for l in lines)
 
 
@@ -106,11 +106,11 @@ def test_export_screen_has_html_json_and_copy(src, tmp_path, monkeypatch):
     monkeypatch.setattr(menu_ui.webbrowser, "open", lambda url: None)
     html_file, json_file = tmp_path / "r.html", tmp_path / "r.json"
     run_menu(_feed(["1", str(src), "b",
-                    "4", "1", str(html_file), "n", "",        # HTML, don't open
-                    "4", "2", str(json_file), "",             # JSON
-                    "4", "3", "",                             # copy
-                    "4", "9", "",                             # invalid
-                    "6"]), lambda s: None)
+                    "5", "1", str(html_file), "n", "",        # HTML, don't open
+                    "5", "2", str(json_file), "",             # JSON
+                    "5", "3", "",                             # copy
+                    "5", "9", "",                             # invalid
+                    "7"]), lambda s: None)
     assert html_file.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
     assert json_file.read_text(encoding="utf-8").startswith("[")
     assert len(copied) == 1 and "CS-INJ-001" in copied[0]

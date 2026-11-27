@@ -64,10 +64,10 @@ def _feed(answers):
 
 def test_menu_asks_about_history_only_for_git_folders(repo, tmp_path_factory):
     lines = []
-    run_menu(_feed(["1", str(repo), "", "b", "6"]), lines.append)
+    run_menu(_feed(["1", str(repo), "", "b", "7"]), lines.append)
     assert any("(commit " in l for l in lines)
     plain = tmp_path_factory.mktemp("plain")
-    run_menu(_feed(["1", str(plain), "b", "6"]), lambda s: None)    # no extra prompt
+    run_menu(_feed(["1", str(plain), "b", "7"]), lambda s: None)    # no extra prompt
 
 
 def test_exclude_globs_and_ignore_file_apply_to_history(repo):

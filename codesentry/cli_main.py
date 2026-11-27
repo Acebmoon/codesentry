@@ -12,6 +12,7 @@ from .rules_db import SEVERITY_ORDER
 from .deps_check import check_deps, find_manifests, DepsError
 from .history_scan import scan_history, is_git_repo, HistoryError
 from .repo_fetch import is_repo_url, scan_repo, RepoError
+from .site_scan import scan_site, SiteError
 
 
 def _file_size(text: str) -> int:
@@ -45,6 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "for known vulnerabilities via OSV.dev (sends package names and versions)")
     p.add_argument("--history", action="store_true",
                    help="also look for secrets in the git history of local repositories (committed once, later removed)")
+    p.add_argument("--site", action="append", default=[], metavar="URL",
+                   help="passive check of a live website (headers, cookies, TLS, CORS, exposed files); repeatable")
+    p.add_argument("--i-have-permission", action="store_true",
+                   help="confirm you own the site(s) given to --site or may test them")
     p.add_argument("-o", "--output", metavar="FILE", help="write the report to a file")
     p.add_argument("-v", "--version", action="version", version=f"codesentry {__version__}")
     return p
@@ -54,11 +59,16 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if not args.paths:
+    if not args.paths and not args.site:
         if sys.stdin.isatty():
             from .menu_ui import start
             return start()
         parser.error("the following arguments are required: paths")
+
+    if args.site and not args.i_have_permission:
+        print("codesentry: --site only checks sites you own or may test; confirm with --i-have-permission",
+              file=sys.stderr)
+        return 2
 
     links = [p for p in args.paths if not os.path.exists(p) and is_repo_url(p)]
     local = [p for p in args.paths if p not in links]
@@ -90,6 +100,12 @@ def main(argv=None) -> int:
                                   args.keep, args.deps, warnings)
         except RepoError as exc:
             print(f"codesentry: {link}: {exc}", file=sys.stderr)
+            return 2
+    for site in args.site:
+        try:
+            findings += scan_site(site, args.min_severity, warnings)
+        except SiteError as exc:
+            print(f"codesentry: {exc}", file=sys.stderr)
             return 2
     findings.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
     for w in warnings:

@@ -6,6 +6,7 @@ import os
 import re
 import json
 import fnmatch
+import ssl
 import urllib.request
 from typing import Dict, Iterable, List, Optional
 
@@ -96,17 +97,43 @@ def read_deps(manifests: Iterable[str]) -> List[Dep]:
     return deps
 
 
+_CA_FILES = ("/etc/ssl/cert.pem",                       # macOS, Alpine
+             "/etc/ssl/certs/ca-certificates.crt",      # Debian, Ubuntu, Arch
+             "/etc/pki/tls/certs/ca-bundle.crt")        # Fedora, RHEL
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Default TLS context; falls back to the system CA files when Python ships without any
+    (python.org builds on macOS, frozen binaries)."""
+    ctx = ssl.create_default_context()
+    if ctx.cert_store_stats().get("x509_ca", 0) > 0:
+        return ctx
+    for path in _CA_FILES:
+        if os.path.isfile(path):
+            try:
+                ctx.load_verify_locations(cafile=path)
+                return ctx
+            except (ssl.SSLError, OSError):
+                continue
+    try:
+        import certifi  # type: ignore
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass
+    return ctx
+
+
 def _post(url: str, payload: dict) -> dict:
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json",
                                           "User-Agent": "codesentry"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=_ssl_context()) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def _get(url: str) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "codesentry"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=_ssl_context()) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

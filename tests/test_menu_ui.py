@@ -17,7 +17,7 @@ def test_banner_fits_80_columns():
 
 
 def test_exit_option():
-    assert run_menu(_feed(["6"]), lambda s: None) == 0
+    assert run_menu(_feed(["7"]), lambda s: None) == 0
 
 
 def test_scan_and_save(tmp_path):
@@ -25,21 +25,21 @@ def test_scan_and_save(tmp_path):
     src.write_text('password = "hunter2hunter2"\n')
     report = tmp_path / "r.json"
     lines = []
-    run_menu(_feed(["1", f'"{src}"', "b", "4", "2", str(report), "", "6"]), lines.append)
+    run_menu(_feed(["1", f'"{src}"', "b", "5", "2", str(report), "", "7"]), lines.append)
     assert any("CS-" in l for l in lines)
     assert report.read_text().startswith("[")
 
 
 def test_invalid_path_and_option():
     lines = []
-    run_menu(_feed(["9", "", "1", "/no/such/path", "", "6"]), lines.append)
+    run_menu(_feed(["9", "", "1", "/no/such/path", "", "7"]), lines.append)
     text = "\n".join(lines)
     assert "Invalid option" in text and "Path not found" in text
 
 
 def test_save_without_scan():
     lines = []
-    run_menu(_feed(["4", "", "6"]), lines.append)
+    run_menu(_feed(["5", "", "7"]), lines.append)
     assert any("Run a scan first" in l for l in lines)
 
 
@@ -82,7 +82,7 @@ def test_results_screen_pages_filters_saves_and_goes_back(tmp_path, monkeypatch)
     src = _findings_file(tmp_path)
     report = tmp_path / "out.json"
     cleared, lines = [], []
-    run_menu(_feed(["1", str(src), "n", "p", "m", "a", "s", str(report), "b", "6"]),
+    run_menu(_feed(["1", str(src), "n", "p", "m", "a", "s", str(report), "b", "7"]),
              lines.append, lambda: cleared.append(1))
     text = "\n".join(lines)
     assert "RESULTS" in text and "Page 1/" in text and "Page 2/" in text
@@ -95,7 +95,7 @@ def test_results_screen_back_returns_to_the_menu(tmp_path):
     src = tmp_path / "a.py"
     src.write_text("x = 1\n")
     lines = []
-    run_menu(_feed(["1", str(src), "b", "6"]), lines.append)
+    run_menu(_feed(["1", str(src), "b", "7"]), lines.append)
     text = "\n".join(lines)
     assert "No issues found" in text and text.count("STATIC CODE SCANNER") == 2
 
@@ -105,13 +105,13 @@ def test_b_goes_back_from_every_input_screen(tmp_path):
     src.write_text("x = 1\n")
     lines = []
     # scan folder prompt, github link prompt, a later question, and the save prompt: B each time
-    run_menu(_feed(["1", "b", "2", "B", "2", "https://github.com/o/r", "back", "6"]), lines.append)
-    run_menu(_feed(["1", str(src), "b", "4", "b", "6"]), lines.append)       # menu option 4, then B
+    run_menu(_feed(["1", "b", "2", "B", "2", "https://github.com/o/r", "back", "7"]), lines.append)
+    run_menu(_feed(["1", str(src), "b", "5", "b", "7"]), lines.append)       # menu option 5, then B
     text = "\n".join(lines)
     assert text.count("[B] Back") >= 3 and "Invalid option" not in text
     # saving from the results screen can be cancelled too
     lines2 = []
-    run_menu(_feed(["1", str(src), "s", "b", "b", "6"]), lines2.append)
+    run_menu(_feed(["1", str(src), "s", "b", "b", "7"]), lines2.append)
     assert any("Cancelled." in l for l in lines2)
 
 

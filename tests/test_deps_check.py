@@ -89,13 +89,13 @@ def _feed(answers):
 def test_menu_asks_about_deps_only_when_manifests_exist(project, tmp_path, monkeypatch):
     _fake_osv(monkeypatch, {"flask": ["GHSA-aaaa"]})
     lines = []
-    run_menu(_feed(["1", str(project), "", "b", "6"]), lines.append)   # Enter = yes
+    run_menu(_feed(["1", str(project), "", "b", "7"]), lines.append)   # Enter = yes
     assert any("GHSA-aaaa" in l for l in lines)
     empty = tmp_path / "empty"
     empty.mkdir()
-    run_menu(_feed(["1", str(empty), "b", "6"]), lambda s: None)
+    run_menu(_feed(["1", str(empty), "b", "7"]), lambda s: None)
     monkeypatch.setattr(deps_check, "_post", lambda *a: pytest.fail("said no: nothing may be sent"))
-    run_menu(_feed(["1", str(project), "n", "b", "6"]), lambda s: None)   # no extra prompt, would StopIteration
+    run_menu(_feed(["1", str(project), "n", "b", "7"]), lambda s: None)   # no extra prompt, would StopIteration
 
 
 def test_same_flaw_with_two_ids_is_reported_once_and_git_ranges_are_not_versions(project, monkeypatch):
@@ -112,3 +112,36 @@ def test_same_flaw_with_two_ids_is_reported_once_and_git_ranges_are_not_versions
     findings = deps_check.check_deps(deps_check.find_manifests([str(project)]))
     assert sorted(f.rule_id for f in findings) == ["GHSA-aaaa", "GHSA-other"]
     assert all("2.2.5" in f.fix and "deadbeef" not in f.fix for f in findings)
+
+
+def test_ssl_context_falls_back_to_system_ca_file(monkeypatch, tmp_path):
+    import ssl
+    calls = []
+
+    class Fake:
+        def cert_store_stats(self):
+            return {"x509_ca": 0}
+
+        def load_verify_locations(self, cafile=None):
+            calls.append(cafile)
+
+    bundle = tmp_path / "cert.pem"
+    bundle.write_text("x")
+    monkeypatch.setattr(ssl, "create_default_context", lambda: Fake())
+    monkeypatch.setattr(deps_check, "_CA_FILES", (str(tmp_path / "missing.pem"), str(bundle)))
+    assert isinstance(deps_check._ssl_context(), Fake)
+    assert calls == [str(bundle)]
+
+
+def test_ssl_context_keeps_default_when_it_has_certificates(monkeypatch):
+    import ssl
+
+    class Fake:
+        def cert_store_stats(self):
+            return {"x509_ca": 10}
+
+        def load_verify_locations(self, cafile=None):
+            raise AssertionError("should not be called")
+
+    monkeypatch.setattr(ssl, "create_default_context", lambda: Fake())
+    assert isinstance(deps_check._ssl_context(), Fake)
