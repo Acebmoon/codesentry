@@ -80,11 +80,11 @@ To silence only some rules, list them: `# codesentry:ignore[CS-SEC-007]` or `// 
 
 ## Rules
 
-CodeSentry ships 120 rules. Every finding shows its rule ID, CWE and a fix suggestion. List them with `python -c "from codesentry.rules_db import RULES; [print(r.id, r.severity, r.name) for r in RULES]"`.
+CodeSentry ships 122 rules. Every finding shows its rule ID, CWE and a fix suggestion. List them with `python -c "from codesentry.rules_db import RULES; [print(r.id, r.severity, r.name) for r in RULES]"`.
 
 | Area | Rule IDs | What it catches |
 |---|---|---|
-| Secrets | CS-SEC-001..022 | AWS, GitHub, GitLab, Slack, npm, Stripe, SendGrid, Telegram, Google, Azure, AI-provider keys; private/PGP keys; JWTs; hardcoded passwords; credentials in URLs and Basic headers; ASP.NET machineKey |
+| Secrets | CS-SEC-001..023 | AWS, GitHub, GitLab, Slack, npm, Stripe, SendGrid, Telegram, Google, Azure, AI-provider keys; private/PGP keys; JWTs; hardcoded passwords, quoted or unquoted in config files (`.env`, YAML, INI, `.properties`); credentials in URLs and Basic headers; ASP.NET machineKey |
 | Injection | CS-INJ-001..015 | `eval`/`exec`, OS commands, SQL/NoSQL/LDAP/XPath built from variables, SSTI, PHP command calls, LLM output executed as code |
 | Files and requests | CS-PTH, CS-LFI, CS-SSR, CS-RED, CS-UPL | path traversal, file inclusion, SSRF, open redirects, unsafe uploads |
 | XSS and DOM | CS-XSS-001..005 | `dangerouslySetInnerHTML`, `v-html`, HTML sinks, `postMessage('*')`, message listeners |
@@ -136,7 +136,7 @@ codesentry https://github.com/owner/repo
 ```
 
 Or pick "Scan GitHub repo" in the menu. CodeSentry makes a shallow clone into a temporary folder (needs `git`),
-scans it and deletes it. Public repositories only; nothing from the repository is ever executed, and its
+scans it and deletes it. A `/tree/<branch>` link scans that branch (or tag). Public repositories only; nothing from the repository is ever executed, and its
 `.codesentryignore` is not applied. Use it to review code you are allowed to check and to report problems to the owner.
 
 Add `--keep` to keep the downloaded copy. In the menu you choose whether to keep it, can show the last results again
@@ -145,7 +145,7 @@ Add `--keep` to keep the downloaded copy. In the menu you choose whether to keep
 
 ## Checking dependencies
 
-`--deps` also checks pinned packages in `requirements*.txt` (`name==1.2.3`) and `package.json` (`^1.2.3` is read as 1.2.3) for known vulnerabilities, using [OSV.dev](https://osv.dev):
+`--deps` also checks pinned packages in `package-lock.json` (the installed versions, transitive dependencies included), `requirements*.txt` (`name==1.2.3`) and `package.json` when there is no lock next to it (`^1.2.3` is read as 1.2.3) for known vulnerabilities, using [OSV.dev](https://osv.dev). Specs without a pinned version (ranges, `latest`, git links) are listed in a warning:
 
 ```
 codesentry . --deps
@@ -156,7 +156,7 @@ Only package names and versions are sent, and only when you use `--deps` (the me
 
 ## Git history
 
-`--history` looks for secrets in the git history of a local repository: ones that were committed once and removed later are still in old commits. Each one is reported at the commit that added it, and needs to be revoked or rotated (deleting the line isn't enough). Secrets still present in the current files are left to the normal scan. `--exclude` and `.codesentryignore` apply. The menu asks when the folder is a git repository.
+`--history` looks for secrets in the git history of a local repository: ones that were committed once and removed later are still in old commits. Each one is reported at the commit that added it, and needs to be revoked or rotated (deleting the line isn't enough). Secrets still present in the current files are left to the normal scan. `--exclude` and `.codesentryignore` apply. The menu asks when the folder is a git repository. The folder's own git config cannot make `git log` run a signature program (`log.showSignature` is switched off).
 
 ## Menu screens and mouse
 
