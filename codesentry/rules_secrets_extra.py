@@ -1,9 +1,30 @@
 # rules_secrets_extra.py
 # Extra rule pack: more token formats and hardcoded keys (CS-SEC-009 and up).
 
-from .rules_db import make_rule as _r
+import re
+
+from .rules_db import make_rule as _r, is_placeholder, _VERSION, _INTERPOLATED
 
 CONFIG_NET = frozenset({".config"})
+
+# Config files where values are usually written without quotes (.env, INI, .properties, YAML, TOML).
+CONFIG_FILES = frozenset({".env", ".ini", ".cfg", ".conf", ".properties", ".toml", ".yaml", ".yml"})
+# Keys that describe the auth setup instead of holding a secret: token_url, auth_mode, password_file...
+_DESCRIBES = re.compile(r"(?i)(?:type|mode|method|provider|scheme|url|uri|endpoint|host|port|file|path|dir"
+                        r"|header|name|user|username|enabled|required|ttl|timeout|expiry|expires|length"
+                        r"|version|format|algorithm|issuer|audience|realm|domain|policy|rotation|prefix)$")
+_NOT_A_SECRET = re.compile(r"(?i)true|false|yes|no|on|off|null|none|nil|enabled|disabled|required|optional|default")
+
+
+def _config_secret(m: "re.Match") -> bool:
+    """CS-SEC-023: an unquoted value under a secret key, unless it is clearly not a secret."""
+    value, key = m.group("secret"), m.group("key")
+    if _DESCRIBES.search(key) or _NOT_A_SECRET.fullmatch(value) or value.isdigit():
+        return False
+    if is_placeholder(value) or _VERSION.fullmatch(value) or _INTERPOLATED.fullmatch(value):
+        return False
+    # A YAML tag or alias (!vault, *ref) and an example cut short ("sk-ant-...") are not the secret.
+    return not (value.startswith(("!", "&", "*")) or value.endswith("..."))
 
 SECRET_RULES = [
     _r("CS-SEC-009", "Stripe live API key", "HIGH", "CWE-798",
@@ -49,4 +70,16 @@ SECRET_RULES = [
        r"<machineKey\s[^>]*(?:validationKey|decryptionKey)\s*=\s*[\"'](?P<secret>[0-9A-Fa-f]{32,})[\"']",
        "Generate keys per environment and keep them out of source; a leaked key allows forged ViewState.",
        True, exts=CONFIG_NET | frozenset({".aspx"})),
+    # CS-SEC-007 needs quotes around the value, and config files mostly have none: DB_PASSWORD=... in
+    # .env, password: ... in YAML, db.password=... in .properties. The keyword must end the key or be
+    # followed by a separator or a camelCase change (token_ttl, apiKeyValue), so tokenizer and author
+    # do not count. A commented-out line still counts: the secret is still in the file.
+    _r("CS-SEC-023", "Hardcoded secret in a config file", "HIGH", "CWE-798",
+       r"^\s*(?:[#;]\s*)?(?:-\s+)?(?:export\s+)?"
+       r"(?P<key>(?:[A-Za-z0-9_.-]{0,40}?(?:[_.-]|(?<=[a-z0-9])(?=[A-Z])))?"
+       r"(?i:password|passwd|pwd|senha|secret|api[_-]?key|token|auth)"
+       r"(?:(?:[_.-]|(?<=[a-z0-9])(?=[A-Z]))[A-Za-z0-9_.-]{0,40})?)"
+       r"\s*[:=]\s*(?P<secret>[^\s'\"]{6,200})(?:\s+[#;].*)?\s*$",
+       "Keep real values out of committed config files; load them from the environment or a secret manager.",
+       True, exts=CONFIG_FILES, check=_config_secret),
 ]
