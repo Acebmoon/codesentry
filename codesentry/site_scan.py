@@ -17,7 +17,7 @@ from .deps_check import _ssl_context, check_packages, Dep, DepsError
 from .rules_db import SEVERITY_ORDER
 from .scan_engine import Finding, _scan_lines
 from .site_http import (SiteError, Resp, TIMEOUT, normalize_url, is_local, open_url)
-from .site_js import find_libraries, scan_tokens, scan_internal, scan_source_map
+from .site_js import find_libraries, scan_tokens, scan_internal, scan_source_map, scan_form_controls
 from .site_paths import scan_paths, scan_robots
 
 __all__ = ["scan_site", "SiteError", "normalize_url"]
@@ -385,6 +385,7 @@ def scan_site(url: str, min_severity: str = "LOW", warnings: Optional[List[str]]
     findings += _scan_html(final, page, text, final_https, local)
     findings += _scan_secrets(final, text)
     findings += scan_tokens(final, text)
+    findings += scan_form_controls(final, text)
     if not base_local:
         findings += scan_internal(final, text)
     findings += _scan_cors(final, ctx)
@@ -396,6 +397,7 @@ def scan_site(url: str, min_severity: str = "LOW", warnings: Optional[List[str]]
     for script_url, js in _fetch_scripts(page, final, ctx):
         findings += _scan_secrets(script_url, js[:MAX_SCRIPT_SCAN])
         findings += scan_tokens(script_url, js[:MAX_SCRIPT_SCAN])
+        findings += scan_form_controls(script_url, js[:MAX_SCRIPT_SCAN])
         if not base_local:
             findings += scan_internal(script_url, js[:MAX_SCRIPT_SCAN])
         findings += scan_source_map(script_url, js, ctx)

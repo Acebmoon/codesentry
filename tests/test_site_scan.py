@@ -310,3 +310,9 @@ def test_self_signed_https_site_is_reported_and_still_scanned(tmp_path):
     assert any(f.rule_id == "CS-WEB-003" and f.severity == "HIGH" for f in found)
     assert any(f.name == "Environment file exposed" for f in found)          # the scan went on
     assert warnings and "not trusted" in warnings[0]
+
+
+def test_number_input_without_limits_is_flagged():
+    from codesentry.site_js import scan_form_controls
+    assert scan_form_controls("u", 'h("input",{type:"number",value:1})')[0].rule_id == "CS-WEB-035"
+    assert scan_form_controls("u", '<input type="number" min="1" max="9">') == []

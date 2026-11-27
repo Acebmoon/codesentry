@@ -123,3 +123,20 @@ def scan_source_map(script_url: str, text: str, ctx) -> List[Finding]:
                         "the original source code can be downloaded",
                         "Do not deploy .map files (or serve them only to authenticated developers).")]
     return []
+
+
+_NUMBER_INPUT = re.compile(r"""type\s*[:=]\s*\\?["']number\\?["']""")
+
+
+def scan_form_controls(label: str, text: str) -> List[Finding]:
+    """Number fields with no min/max accept negative or absurd values (client side)."""
+    bad = 0
+    for m in _NUMBER_INPUT.finditer(text):
+        near = text[max(0, m.start() - 200):m.end() + 200]
+        if not re.search(r"\b(?:min|max)\s*[:=]", near):
+            bad += 1
+    if not bad:
+        return []
+    return [Finding("CS-WEB-035", "Number input without min/max", "LOW", "CWE-20", label, 1,
+                    f"{bad} numeric field(s) with no limits",
+                    "Set min/max on number inputs and validate quantity and price on the server too.")]
