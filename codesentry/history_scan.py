@@ -27,8 +27,12 @@ def is_git_repo(path: str) -> bool:
 
 
 def _git_log(path: str) -> str:
-    cmd = ["git", "-c", "core.quotepath=off", "log", "--all", "--reverse", "-p", "-U0", "--no-color",
-           "--no-ext-diff", "--no-textconv", f"-n{MAX_COMMITS}", "--format=@@commit %H", "--", "."]
+    # The scanned folder may come from someone else (a zip with its .git inside), and git reads that
+    # folder's own .git/config. log.showSignature makes `git log` verify signed commits by running
+    # gpg.program, which that config can point anywhere: switch it off, like the clone switches off hooks.
+    cmd = ["git", "-c", "core.quotepath=off", "-c", "log.showSignature=false", "log", "--all", "--reverse",
+           "-p", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", f"-n{MAX_COMMITS}",
+           "--format=@@commit %H", "--", "."]
     try:
         out = subprocess.run(cmd, cwd=path, capture_output=True, timeout=TIMEOUT,
                              env={**os.environ, "GIT_PAGER": "cat", "GIT_TERMINAL_PROMPT": "0"})
