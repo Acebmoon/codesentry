@@ -9,7 +9,7 @@ from . import __version__
 from .scan_engine import scan, MAX_FILE_BYTES
 from .report_output import as_text, as_json, as_sarif, as_html
 from .rules_db import SEVERITY_ORDER
-from .deps_check import check_deps, find_manifests, DepsError
+from .deps_check import check_deps, find_manifests, not_checked_warning, DepsError
 from .history_scan import scan_history, is_git_repo, HistoryError
 from .repo_fetch import is_repo_url, scan_repo, RepoError
 
@@ -71,10 +71,13 @@ def main(argv=None) -> int:
     findings = scan(local, args.exclude, args.min_severity, args.max_file_size, skipped) if local else []
     warnings = []
     if args.deps and local:
+        unchecked: list = []
         try:
-            findings += check_deps(find_manifests(local, args.exclude), args.min_severity)
+            findings += check_deps(find_manifests(local, args.exclude), args.min_severity, unchecked)
         except DepsError as exc:
             warnings.append(f"dependency check failed: {exc}")
+        if unchecked:
+            warnings.append(not_checked_warning(unchecked))
     if args.history:
         for p in local:
             if not is_git_repo(p):

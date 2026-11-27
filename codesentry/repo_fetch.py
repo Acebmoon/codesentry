@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 
 from .scan_engine import Finding, SkippedFile, scan, MAX_FILE_BYTES
 from .rules_db import SEVERITY_ORDER
-from .deps_check import check_deps, find_manifests, DepsError
+from .deps_check import check_deps, find_manifests, not_checked_warning, DepsError
 
 _URL = re.compile(
     r"^(?:https?://)?(?:www\.)?github\.com/(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))"
@@ -144,11 +144,14 @@ def scan_repo(link: str, min_severity: str = "LOW", exclude_globs=(),
             return prefix + "/" + os.path.relpath(p, root).replace(os.sep, "/")
 
         if deps:
+            unchecked: List[str] = []
             try:
-                found += check_deps(find_manifests([root], exclude_globs, use_ignore_file=False), min_severity)
+                found += check_deps(find_manifests([root], exclude_globs, use_ignore_file=False), min_severity, unchecked)
             except DepsError as exc:
                 if warnings is not None:
                     warnings.append(f"dependency check failed: {exc}")
+            if unchecked and warnings is not None:
+                warnings.append(not_checked_warning(unchecked))
         found.sort(key=lambda x: (-SEVERITY_ORDER[x.severity], x.file, x.line, x.column))
         for f in found:
             f.file = shown(f.file)
