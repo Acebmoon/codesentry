@@ -173,18 +173,22 @@ def _fingerprint(rule, match) -> str:
 
 # Rules that still look inside commented lines (a secret in a comment is still leaked).
 _KEEP_IN_COMMENTS = ("CS-SEC",)
-_COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--", "--")
+_COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--")
+# "--" opens a comment only in SQL and Lua. In a shell script or a config file a line starting with
+# "--" is usually a continued command or a flag ("  --anonymous-auth=true \").
+_DASH_COMMENT_EXTS = frozenset({".sql", ".lua"})
 
 
-def _is_comment_line(line: str) -> bool:
-    return line.lstrip().startswith(_COMMENT_START)
+def _is_comment_line(line: str, ext: str = "") -> bool:
+    s = line.lstrip()
+    return s.startswith(_COMMENT_START) or (ext in _DASH_COMMENT_EXTS and s.startswith("--"))
 
 
 def _scan_lines(lines: Iterable[str], ext: str, path: str) -> List[Finding]:
     findings: List[Finding] = []
     for num, line in enumerate(lines, 1):
         silenced = _silenced(line)
-        commented = _is_comment_line(line)
+        commented = _is_comment_line(line, ext)
         for rule in RULES:
             if commented and not rule.id.startswith(_KEEP_IN_COMMENTS):
                 continue
