@@ -50,7 +50,22 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _utf8_output() -> None:
+    """Write UTF-8. On Windows a pipe or a redirect (`codesentry . -f json > report.json`) uses the
+    console code page, and the first emoji in the scanned code raised UnicodeEncodeError: the report
+    came out empty and the exit code was 1, the same as "findings found". The menu already did this."""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+        if encoding in ("utf8", "utf8sig"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None) -> int:
+    _utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
 
