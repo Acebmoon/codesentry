@@ -78,6 +78,29 @@ def test_exclude_globs_and_ignore_file_apply_to_history(repo):
     assert not any(f.file.startswith("config.py") for f in scan_history(str(repo)))
 
 
+def test_two_secrets_under_the_same_key_are_told_apart(tmp_path):
+    from codesentry.scan_engine import scan
+    from codesentry.report_output import as_json, as_sarif
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "config.py").write_text('api_key = "Xk9#mQ2!pL"\n')
+    _git(tmp_path, "add", "."); _git(tmp_path, "commit", "-qm", "1")
+    (tmp_path / "config.py").write_text('api_key = "Zr7$wN4@vBq9"\n')      # rotated; the old key stays in history
+    _git(tmp_path, "commit", "-qam", "2")
+    (tmp_path / "app.js").write_text('const token = "Aa1!Bb2@Cc"\n')
+    _git(tmp_path, "add", "."); _git(tmp_path, "commit", "-qm", "3")
+    (tmp_path / "app.js").write_text('const token = "Dd3#Ee4$Ff"\n')
+    _git(tmp_path, "commit", "-qam", "4")
+    (tmp_path / "app.js").write_text("const token = process.env.T\n")
+    _git(tmp_path, "commit", "-qam", "5")
+    current = scan([str(tmp_path)])
+    found = scan_history(str(tmp_path), current)
+    assert len([f for f in found if f.file.startswith("config.py")]) == 1     # the old key, not today's
+    assert len([f for f in found if f.file.startswith("app.js")]) == 2        # two different tokens
+    # The hash that tells them apart never reaches a report.
+    assert all(f.fingerprint for f in found)
+    assert "fingerprint" not in as_json(found) and all(f.fingerprint not in as_sarif(found, "x") for f in found)
+
+
 def _signed_commit(repo):
     """A commit with a (fake) signature, written directly as a git object."""
     _git(repo, "init", "-q")
