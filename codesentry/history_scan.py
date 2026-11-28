@@ -27,8 +27,12 @@ def is_git_repo(path: str) -> bool:
 
 
 def _git_log(path: str) -> str:
-    cmd = ["git", "-c", "core.quotepath=off", "log", "--all", "--reverse", "-p", "-U0", "--no-color",
-           "--no-ext-diff", "--no-textconv", f"-n{MAX_COMMITS}", "--format=@@commit %H", "--", "."]
+    # The scanned folder may come from someone else (a zip with its .git inside), and git reads that
+    # folder's own .git/config. log.showSignature makes `git log` verify signed commits by running
+    # gpg.program, which that config can point anywhere: switch it off, like the clone switches off hooks.
+    cmd = ["git", "-c", "core.quotepath=off", "-c", "log.showSignature=false", "log", "--all", "--reverse",
+           "-p", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", f"-n{MAX_COMMITS}",
+           "--format=@@commit %H", "--", "."]
     try:
         out = subprocess.run(cmd, cwd=path, capture_output=True, timeout=TIMEOUT,
                              env={**os.environ, "GIT_PAGER": "cat", "GIT_TERMINAL_PROMPT": "0"})
@@ -55,8 +59,10 @@ def scan_history(path: str, current: Iterable[Finding] = (), min_severity: str =
     that added them. Honors --exclude and .codesentryignore like the normal scan. Secrets still present in the current files are skipped: the normal scan
     already reports those."""
     root = os.path.abspath(path)
+    # Secrets are compared by the hash of their value, not by the masked snippet: two different keys
+    # under the same name mask to the same 'api_key = "****"'.
     still_here: Set[Tuple[str, str]] = {
-        (os.path.relpath(f.file, root).replace(os.sep, "/"), f.snippet) for f in current}
+        (os.path.relpath(f.file, root).replace(os.sep, "/"), f.fingerprint or f.snippet) for f in current}
     threshold = SEVERITY_ORDER[min_severity]
     globs = list(exclude_globs) + (read_ignore_file(root) if use_ignore_file else [])
     excluded = _excluder(root, globs)
@@ -75,8 +81,9 @@ def scan_history(path: str, current: Iterable[Finding] = (), min_severity: str =
             for f in _scan_lines(lines, ext, file):
                 if not f.rule_id.startswith("CS-SEC") or SEVERITY_ORDER[f.severity] < threshold:
                     continue
-                key = (f.rule_id, file, f.snippet)
-                if key in seen or (file, f.snippet) in still_here:
+                same = f.fingerprint or f.snippet
+                key = (f.rule_id, file, same)
+                if key in seen or (file, same) in still_here:
                     continue
                 seen.add(key)
                 f.line = numbers[f.line - 1]

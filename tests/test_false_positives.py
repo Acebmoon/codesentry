@@ -51,3 +51,10 @@ def test_jwt_verify_false_is_not_a_tls_finding_and_commented_debug_is_ignored(tm
     assert "CS-JWT-001" in ids
     assert ids.count("CS-CRY-002") == 1            # only the requests call
     assert "CS-CFG-001" not in ids and "CS-CFG-002" not in ids
+
+
+def test_double_dash_is_a_comment_only_in_sql_and_lua(tmp_path):
+    # A continued shell command puts the flag on a line of its own, starting with "--".
+    sh = "kube-apiserver \\\n  --anonymous-auth=true \\\n  --v=2\n"
+    assert "CS-K8S-005" in _ids(tmp_path, "start.sh", sh)
+    assert _ids(tmp_path, "a.lua", "-- x = eval(s)\n") == []

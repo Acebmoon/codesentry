@@ -2,8 +2,10 @@
 # Regression tests for missed secrets, masking, excludes, skipped files and
 # ignore markers. Every secret in this file is invented.
 
+import io
 import json
 import os
+import sys
 import time
 
 from codesentry.cli_main import main
@@ -180,3 +182,16 @@ def test_only_the_secret_is_masked_and_it_never_shows(tmp_path, capsys):
         assert SECRET[-3:] not in capsys.readouterr().out, fmt
     assert mask("hunter2") == "****"
     assert mask("AKIAIOSFODNN7EXAMPLE", reveal=4) == "AKIA****"
+
+
+def test_report_to_a_pipe_in_another_encoding_comes_out_whole(tmp_path, monkeypatch):
+    # On Windows a pipe or a redirect uses the console code page (cp1252), not UTF-8.
+    emoji = chr(0x2705)
+    (tmp_path / "a.py").write_text(f'x = eval("{emoji}")\n', encoding="utf-8")
+    raw = io.BytesIO()
+    pipe = io.TextIOWrapper(raw, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", pipe)
+    code = main([str(tmp_path)])
+    pipe.flush()
+    out = raw.getvalue().decode("utf-8")
+    assert code == 1 and "CS-INJ-001" in out and emoji in out

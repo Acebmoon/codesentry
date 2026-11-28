@@ -1,4 +1,5 @@
 # test_history_scan.py
+import os
 import subprocess
 
 import pytest
@@ -75,6 +76,65 @@ def test_exclude_globs_and_ignore_file_apply_to_history(repo):
         not any(f.file.startswith("config.py") for f in scan_history(str(repo), exclude_globs=["config.py"]))
     (repo / ".codesentryignore").write_text("config.py\n")
     assert not any(f.file.startswith("config.py") for f in scan_history(str(repo)))
+
+
+def test_two_secrets_under_the_same_key_are_told_apart(tmp_path):
+    from codesentry.scan_engine import scan
+    from codesentry.report_output import as_json, as_sarif
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "config.py").write_text('api_key = "Xk9#mQ2!pL"\n')
+    _git(tmp_path, "add", "."); _git(tmp_path, "commit", "-qm", "1")
+    (tmp_path / "config.py").write_text('api_key = "Zr7$wN4@vBq9"\n')      # rotated; the old key stays in history
+    _git(tmp_path, "commit", "-qam", "2")
+    (tmp_path / "app.js").write_text('const token = "Aa1!Bb2@Cc"\n')
+    _git(tmp_path, "add", "."); _git(tmp_path, "commit", "-qm", "3")
+    (tmp_path / "app.js").write_text('const token = "Dd3#Ee4$Ff"\n')
+    _git(tmp_path, "commit", "-qam", "4")
+    (tmp_path / "app.js").write_text("const token = process.env.T\n")
+    _git(tmp_path, "commit", "-qam", "5")
+    current = scan([str(tmp_path)])
+    found = scan_history(str(tmp_path), current)
+    assert len([f for f in found if f.file.startswith("config.py")]) == 1     # the old key, not today's
+    assert len([f for f in found if f.file.startswith("app.js")]) == 2        # two different tokens
+    # The hash that tells them apart never reaches a report.
+    assert all(f.fingerprint for f in found)
+    assert "fingerprint" not in as_json(found) and all(f.fingerprint not in as_sarif(found, "x") for f in found)
+
+
+def _signed_commit(repo):
+    """A commit with a (fake) signature, written directly as a git object."""
+    _git(repo, "init", "-q")
+    (repo / "a.txt").write_text("x\n")
+    _git(repo, "add", ".")
+    tree = subprocess.run(["git", "write-tree"], cwd=repo, capture_output=True, check=True).stdout.decode().strip()
+    body = (f"tree {tree}\nauthor T <t@t> 1700000000 +0000\ncommitter T <t@t> 1700000000 +0000\n"
+            "gpgsig -----BEGIN PGP SIGNATURE-----\n \n AAAA\n -----END PGP SIGNATURE-----\n\nsigned\n")
+    sha = subprocess.run(["git", "hash-object", "-t", "commit", "-w", "--stdin"], cwd=repo, input=body.encode(),
+                         capture_output=True, check=True).stdout.decode().strip()
+    _git(repo, "update-ref", "HEAD", sha)
+
+
+def test_history_does_not_run_programs_from_the_scanned_repo_config(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _signed_commit(repo)
+    marker = tmp_path / "RAN"
+    if os.name == "nt":
+        program = tmp_path / "fake-gpg.bat"
+        program.write_text(f'@echo off\r\necho ran > "{marker}"\r\nexit /b 1\r\n')
+    else:
+        program = tmp_path / "fake-gpg.sh"
+        program.write_text(f'#!/bin/sh\necho ran > "{marker}"\nexit 1\n')
+        program.chmod(0o755)
+    # What a folder handed over by someone else can carry in its own .git/config.
+    _git(repo, "config", "log.showSignature", "true")
+    _git(repo, "config", "gpg.program", str(program).replace("\\", "/"))
+    subprocess.run(["git", "log", "-1"], cwd=repo, capture_output=True)
+    if not marker.exists():
+        pytest.skip("this git does not verify signatures on log")
+    marker.unlink()
+    scan_history(str(repo))
+    assert not marker.exists()
 
 
 def test_excluded_folder_hides_its_files_in_the_history(tmp_path):

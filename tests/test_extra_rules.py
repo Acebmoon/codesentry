@@ -28,6 +28,7 @@ CASES = [
     ("CS-SEC-016", "a.py", _tok('s = "GOCSPX', '-', A[:28], '"\n'), None),
     ("CS-SEC-017", "a.cs", _tok('c = "AccountName=x;AccountKey=', A * 2, '=="\n'), None),
     ("CS-SEC-018", "a.py", _tok('k = "sk', '-ant-', A + A, '"\n'), None),
+    ("CS-SEC-023", ".env", _tok("DB_PASSWORD=", A[:20], "\n"), "DB_PASSWORD=${DB_PASSWORD}\n"),
     ("CS-SEC-019", "a.py", _tok('t = "shp', 'at_', HEX32, '"\n'), None),
     ("CS-SEC-020", "a.txt", "-----BEGIN PGP PRIVATE KEY BLOCK-----\n", None),
     ("CS-SEC-021", "a.py", _tok('h = {"Authorization": "Basic ', "dXNlcjpwYXNzd29yZDEyMw==", '"}\n'), 'h = {"Authorization": "Bearer " + t}\n'),

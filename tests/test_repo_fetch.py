@@ -57,6 +57,33 @@ def test_scan_repo_bad_link():
         scan_repo("https://example.com/x/y")
 
 
+@pytest.mark.parametrize("text,expected", [
+    ("https://github.com/o/r/tree/dev", "dev"),
+    ("https://github.com/o/r/tree/v1.2.0/docs", "v1.2.0"),
+    ("github.com/o/r/blob/main/app.py", "main"),
+    ("https://github.com/o/r", None),
+    ("https://evil.com/github.com/o/r/tree/dev", None),
+])
+def test_parse_repo_ref(text, expected):
+    assert repo_fetch.parse_repo_ref(text) == expected
+
+
+def test_tree_link_scans_that_branch(local_repo):
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+               GIT_COMMITTER_EMAIL="t@t")
+    subprocess.run(["git", "-C", str(local_repo), "checkout", "-q", "-b", "dev"], check=True, env=env)
+    (local_repo / "dev.py").write_text("y = eval(t)\n")
+    for cmd in (["add", "-A"], ["commit", "-q", "-m", "dev"], ["checkout", "-q", "-"]):
+        subprocess.run(["git", "-C", str(local_repo)] + cmd, check=True, env=env)
+    assert "o/r/dev.py" in {f.file for f in scan_repo("https://github.com/o/r/tree/dev")}
+    assert "o/r/dev.py" not in {f.file for f in scan_repo("https://github.com/o/r")}
+
+
+def test_unsafe_branch_name_is_refused(local_repo):
+    with pytest.raises(RepoError, match="branch name"):
+        scan_repo("https://github.com/o/r/tree/..x")
+
+
 def test_cli_scans_link(local_repo, capsys):
     code = main(["https://github.com/o/r"])
     assert code == 1 and "o/r/app.py" in capsys.readouterr().out

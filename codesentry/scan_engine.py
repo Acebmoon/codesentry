@@ -4,7 +4,8 @@
 import os
 import re
 import fnmatch
-from dataclasses import dataclass, asdict
+import hashlib
+from dataclasses import dataclass, asdict, field
 from typing import Callable, Iterable, List, NamedTuple, Optional
 
 from .rules_db import RULES, SEVERITY_ORDER, PLACEHOLDER_HINTS, CODE_EXTS, CONFIG_EXTS, is_placeholder
@@ -38,9 +39,15 @@ class Finding:
     snippet: str
     fix: str
     column: int = 1
+    # Secret rules only: a short hash of the secret value. Never printed (to_dict drops it); the
+    # history scan uses it to tell two secrets under the same key apart, since their masked
+    # snippets are identical ('api_key = "****"').
+    fingerprint: str = field(default="", repr=False)
 
     def to_dict(self):
-        return asdict(self)
+        d = asdict(self)
+        d.pop("fingerprint", None)
+        return d
 
 
 class SkippedFile(NamedTuple):
@@ -157,20 +164,31 @@ def _secret_snippet(rule, match) -> str:
     return (text[:a] + mask(match.group("secret"), rule.reveal) + text[b:])[:120]
 
 
+def _fingerprint(rule, match) -> str:
+    """A short hash of what the secret rule matched: its `secret` group, or the whole match."""
+    has_group = "secret" in rule.pattern.groupindex and match.start("secret") >= 0
+    value = match.group("secret") if has_group else match.group(0)
+    return hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:16]
+
+
 # Rules that still look inside commented lines (a secret in a comment is still leaked).
 _KEEP_IN_COMMENTS = ("CS-SEC",)
-_COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--", "--")
+_COMMENT_START = ("//", "#", "/*", "* ", "*/", "<!--")
+# "--" opens a comment only in SQL and Lua. In a shell script or a config file a line starting with
+# "--" is usually a continued command or a flag ("  --anonymous-auth=true \").
+_DASH_COMMENT_EXTS = frozenset({".sql", ".lua"})
 
 
-def _is_comment_line(line: str) -> bool:
-    return line.lstrip().startswith(_COMMENT_START)
+def _is_comment_line(line: str, ext: str = "") -> bool:
+    s = line.lstrip()
+    return s.startswith(_COMMENT_START) or (ext in _DASH_COMMENT_EXTS and s.startswith("--"))
 
 
 def _scan_lines(lines: Iterable[str], ext: str, path: str) -> List[Finding]:
     findings: List[Finding] = []
     for num, line in enumerate(lines, 1):
         silenced = _silenced(line)
-        commented = _is_comment_line(line)
+        commented = _is_comment_line(line, ext)
         for rule in RULES:
             if commented and not rule.id.startswith(_KEEP_IN_COMMENTS):
                 continue
@@ -183,7 +201,8 @@ def _scan_lines(lines: Iterable[str], ext: str, path: str) -> List[Finding]:
                     continue
                 snippet = _secret_snippet(rule, match) if rule.secret else line.strip()[:120]
                 findings.append(Finding(rule.id, rule.name, rule.severity, rule.cwe,
-                                        path, num, snippet, rule.fix, match.start() + 1))
+                                        path, num, snippet, rule.fix, match.start() + 1,
+                                        _fingerprint(rule, match) if rule.secret else ""))
     return findings
 
 
